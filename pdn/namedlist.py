@@ -24,6 +24,10 @@
 #
 ########################################################################
 
+# Modified by Addison Elliott beginning of 4/27/2018
+# Added circular dependency checks for NRBF class where it is common to have a C# .NET object contain circular
+# dependencies
+
 __all__ = ['namedlist', 'namedtuple', 'NO_DEFAULT', 'FACTORY']
 
 # All of this hassle with ast is solely to provide a decent __init__
@@ -35,13 +39,13 @@ __all__ = ['namedlist', 'namedtuple', 'NO_DEFAULT', 'FACTORY']
 #  per class.
 
 import ast as _ast
-import sys as _sys
 import copy as _copy
-import operator as _operator
 import itertools as _itertools
+import operator as _operator
+import sys as _sys
 from keyword import iskeyword as _iskeyword
+
 import collections as _collections
-import abc as _abc
 
 _PY2 = _sys.version_info[0] == 2
 _PY3 = _sys.version_info[0] == 3
@@ -51,7 +55,6 @@ try:
 except AttributeError:
     _OrderedDict = None
 
-
 if _PY2:
     _basestring = basestring
     _iteritems = lambda d, **kw: iter(d.iteritems(**kw))
@@ -59,8 +62,8 @@ else:
     _basestring = str
     _iteritems = lambda d, **kw: iter(d.items(**kw))
 
-
 NO_DEFAULT = object()
+
 
 # Wrapper around a callable. Used to specify a factory function instead
 #  of a plain default value.
@@ -79,8 +82,8 @@ class _Fields(object):
 
     def __init__(self, default):
         self.default = default
-        self.with_defaults = []        # List of (field_name, default).
-        self.without_defaults = []     # List of field_name.
+        self.with_defaults = []  # List of (field_name, default).
+        self.without_defaults = []  # List of field_name.
 
     def add(self, field_name, default):
         if default is self.default_not_specified:
@@ -125,7 +128,7 @@ class _NameChecker(object):
             raise ValueError('{0} names cannot be zero '
                              'length: {1!r}'.format(type_of_name, name))
         if _PY2:
-            if not all(c.isalnum() or c=='_' for c in name):
+            if not all(c.isalnum() or c == '_' for c in name):
                 raise ValueError('{0} names can only contain '
                                  'alphanumeric characters and underscores: '
                                  '{1!r}'.format(type_of_name, name))
@@ -170,9 +173,10 @@ def _make_fn(name, chain_fn, args, defaults):
                                     kw_defaults=[])
     module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
                                                      args=parameters,
-                                                     body=[_ast.Return(value=_ast.Call(func=_ast.Name(id='_chain', ctx=_ast.Load()),
-                                                                                       args=arguments,
-                                                                                       keywords=[]))],
+                                                     body=[_ast.Return(
+                                                         value=_ast.Call(func=_ast.Name(id='_chain', ctx=_ast.Load()),
+                                                                         args=arguments,
+                                                                         keywords=[]))],
                                                      decorator_list=[])])
     module_node = _ast.fix_missing_locations(module_node)
 
@@ -196,6 +200,7 @@ def _field_name_with_default(name, default):
     if default is NO_DEFAULT:
         return name
     return '{0}={1!r}'.format(name, default)
+
 
 def _build_docstring(typename, fields, defaults):
     # We can use NO_DEFAULT as a sentinel here, becuase it will never be
@@ -263,30 +268,16 @@ def _fields_and_defaults(typename, field_names, default, rename):
                                              fields.with_defaults]),
             [default for _, default in fields.with_defaults])
 
+
 ########################################################################
 # Common member functions for the generated classes.
 
 
-def _check_circular_refs(self, parents=None):
-    if parents is None:
-        parents = [self]
-    else:
-        parents += [self]
-
-    for field in self._fields:
-        value = getattr(self, field)
-
-        if field in self._circular_refs:
-            continue
-        elif value in parents:
-            self._circular_refs.append(field)
-        elif hasattr(value, '_fields'):
-            _check_circular_refs(value, parents)
-
-
 def _repr(self):
+    # Note: This function is hard-coded to print out the id if there is a circular reference
+    # This is specific to NRBF class that will contain the object id for each item
     if self._ref_count != 0:
-        return '(object_id={0})'.format(self.object_id)
+        return '{0}(id={1})'.format(self.__class__.__name__, self.id)
     else:
         self._ref_count += 1
         str = '{0}({1})'.format(self.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(self, name))
@@ -295,24 +286,24 @@ def _repr(self):
         return str
 
 
-
-    # Note: This function is hard-coded to print out the object_id if there is a circular reference
-    # This is specific to NRBF class that will contain the object id for each item
-    # x = []
-    # for name in self._fields:
-    #     if name in self._circular_refs:
-    #         x.append('{0}=(object_id={1})'.format(name, getattr(self, name).object_id))
-    #     else:
-    #         x.append('{0}={1!r}'.format(name, getattr(self, name)))
-    #
-    # return '{0}({1})'.format(self.__class__.__name__, ', '.join(x))
-
-
-def _asdict(self):
+def _asdict(self, asString=False):
     # In 2.6, return a dict.
     # Otherwise, return an OrderedDict
     t = _OrderedDict if _OrderedDict is not None else dict
-    return t(zip(self._fields, self))
+
+    # If printing the output as a string, then we must increment our ref counter first so that the current object is
+    # not printed out for children
+    if asString:
+        # Increment ref count when creating the dictionary because we are currently printing the document out. Otherwise
+        # it will get written again
+        self._ref_count += 1
+        ret = repr(t(zip(self._fields, self)))
+        self._ref_count = 0
+
+        return ret
+    else:
+        return t(zip(self._fields, self))
+
 
 # Set up methods and fields shared by namedlist and namedtuple
 def _common_fields(fields, docstr):
@@ -320,8 +311,7 @@ def _common_fields(fields, docstr):
                  '__dict__': property(_asdict),
                  '__doc__': docstr,
                  '_asdict': _asdict,
-                 '_fields': fields,
-                 '_check_circular_refs': _check_circular_refs}
+                 '_fields': fields}
 
     # See collections.namedtuple for a description of
     #  what's happening here.
@@ -343,24 +333,30 @@ def _nl_init(self, *args):
     for fieldname, value in _get_values(self._fields, args):
         setattr(self, fieldname, value)
 
-    self._circular_refs = []
     self._ref_count = 0
 
+
 def _nl_eq(self, other):
-    return isinstance(other, self.__class__) and all(getattr(self, name) == getattr(other, name) for name in self._fields)
+    return isinstance(other, self.__class__) and all(
+        getattr(self, name) == getattr(other, name) for name in self._fields)
+
 
 def _nl_ne(self, other):
     return not _nl_eq(self, other)
 
+
 def _nl_len(self):
     return len(self._fields)
+
 
 def _nl_getstate(self):
     return tuple(getattr(self, fieldname) for fieldname in self._fields)
 
+
 def _nl_setstate(self, state):
     for fieldname, value in zip(self._fields, state):
         setattr(self, fieldname, value)
+
 
 def _nl_getitem(self, idx):
     if isinstance(idx, slice):
@@ -369,14 +365,18 @@ def _nl_getitem(self, idx):
 
     return getattr(self, self._fields[idx])
 
+
 def _nl_setitem(self, idx, value):
     return setattr(self, self._fields[idx], value)
+
 
 def _nl_iter(self):
     return (getattr(self, fieldname) for fieldname in self._fields)
 
+
 def _nl_count(self, value):
     return sum(1 for v in iter(self) if v == value)
+
 
 def _nl_index(self, value, start=NO_DEFAULT, stop=NO_DEFAULT):
     # not the most efficient way to implement this, but it will work
@@ -386,6 +386,7 @@ def _nl_index(self, value, start=NO_DEFAULT, stop=NO_DEFAULT):
     if stop is NO_DEFAULT:
         return l.index(value, start)
     return l.index(value, start, stop)
+
 
 def _nl_update(_self, _other=None, **kwds):
     if isinstance(_other, type(_self)):
@@ -408,6 +409,7 @@ def _nl_update(_self, _other=None, **kwds):
     for key, value in chained:
         setattr(_self, key, value)
 
+
 def _nl_replace(_self, **kwds):
     # make a shallow copy, then mutate it
     other = _copy.copy(_self)
@@ -415,11 +417,12 @@ def _nl_replace(_self, **kwds):
         setattr(other, key, value)
     return other
 
+
 ########################################################################
 # The actual namedlist factory function.
 def namedlist(typename, field_names, default=NO_DEFAULT, rename=False,
               use_slots=True):
-    typename = str(typename) # for python 2.x
+    typename = str(typename)  # for python 2.x
     fields, defaults = _fields_and_defaults(typename, field_names, default, rename)
     type_dict = {'__init__': _make_fn('__init__', _nl_init, fields, defaults),
                  '__eq__': _nl_eq,
@@ -438,7 +441,7 @@ def namedlist(typename, field_names, default=NO_DEFAULT, rename=False,
     type_dict.update(_common_fields(fields, _build_docstring(typename, fields, defaults)))
 
     if use_slots:
-        type_dict['__slots__'] = fields + ('_circular_refs', '_ref_count')
+        type_dict['__slots__'] = fields + ('_ref_count',)
 
     # Create the new type object.
     t = type(typename, (object,), type_dict)
@@ -458,11 +461,13 @@ def _nt_new(cls, *args):
     values = [value for _, value in _get_values(cls._fields, args)]
     return tuple.__new__(cls, values)
 
+
 def _nt_replace(_self, **kwds):
     result = _self._make(map(kwds.pop, _self._fields, _self))
     if kwds:
         raise ValueError('Got unexpected field names: %r' % list(kwds))
     return result
+
 
 def _nt_make(cls, iterable, new=tuple.__new__):
     result = new(cls, iterable)
@@ -470,13 +475,16 @@ def _nt_make(cls, iterable, new=tuple.__new__):
         raise TypeError('Expected {0} arguments, got {1}'.format(len(cls._fields), len(result)))
     return result
 
+
 def _nt_getnewargs(self):
     'Return self as a plain tuple.  Used by copy and pickle.'
     return tuple(self)
 
+
 def _nt_getstate(self):
     'Exclude the OrderedDict from pickling'
     return None
+
 
 def _get_values(fields, args):
     # Returns [(fieldname, value)]. If the value is a FACTORY, call it.
@@ -484,10 +492,11 @@ def _get_values(fields, args):
     return [(fieldname, (value._callable() if isinstance(value, FACTORY) else value))
             for fieldname, value in zip(fields, args)]
 
+
 ########################################################################
 # The actual namedtuple factory function.
 def namedtuple(typename, field_names, default=NO_DEFAULT, rename=False):
-    typename = str(typename) # for python 2.x
+    typename = str(typename)  # for python 2.x
     fields, defaults = _fields_and_defaults(typename, field_names, default, rename)
 
     type_dict = {'__new__': _make_fn('__new__', _nt_new, fields, defaults),

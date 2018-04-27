@@ -68,8 +68,8 @@ def _repr(self):
     else:
         return '{0}({1})'.format(self.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(self, name)) for name in self._fields))
 
-PaintDotNet_Document = namedlist('PaintDotNet_Document', ['width', 'height', 'object_id', 'layers'], default=None)
-PaintDotNet_LayerList = namedlist('PaintDotNet_LayerList', ['parent', 'test', 'anotherTest', 'object_id'])
+PaintDotNet_Document = namedlist('PaintDotNet_Document', ['width', 'height', 'id', 'layers'], default=None)
+PaintDotNet_LayerList = namedlist('PaintDotNet_LayerList', ['parent', 'test', 'anotherTest', 'id'])
 
 # PaintDotNet_Document = namedlist('PaintDotNet_Document', ['width', 'height', 'layers'], default=None, use_slots=False)
 # PaintDotNet_LayerList = namedlist('PaintDotNet_LayerList', ['parent', 'test', 'anotherTest', 'parent_test'], use_slots=False)
