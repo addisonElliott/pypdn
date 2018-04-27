@@ -40,24 +40,7 @@ from keyword import iskeyword
 from struct import Struct, calcsize, pack
 
 import aenum
-from namedlist import namedlist
-
-def test_repr(clas):
-    str = clas.__class__.__name__ + '('
-    print(clas.__class__.__name__)
-    for name in clas._fields:
-        print('1', name)
-        str += name + '='
-        xx = getattr(clas, name)
-        print('2', xx)
-        print('3', repr(xx))
-    # ', '.join('{0}={1!r}'.format(name, getattr(self, name)) for name in self._fields)
-    return str
-    # return 'Testing'
-    # return clas.__class__.__name__
-
-    # return '{0}({1})'.format(clas.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(clas, name)) for name in clas._fields))
-
+from pdn.namedlist import namedlist
 
 # Decorator which adds an enum value (an int or a length-one bytes) and its associated
 # reader function to a registration dict (either PrimitiveType_readers or RecordType_readers)
@@ -563,25 +546,25 @@ class Serialization:
         obj = None
         while not isinstance(obj, self._MessageEnd):
             obj = self._read_Record_or_Primitive(primitive_type=False)
-        self._Class_by_id.clear()
-
-        # Resolve all the collection references
-        for reference in self._collection_references:
-            replacement = reference.collection_resolver(self, reference)  # calls one of the non-simple resolvers below
-            # The final steps common to all collection resolvers are completed below
-            if reference.parent:
-                reference.parent[reference.index_in_parent] = replacement
-            self._objects_by_id[reference.id] = replacement
-        self._collection_references.clear()
-
-        # Resolve all the (remaining) simple member references
-        for reference in self._member_references:
-            self._resolve_simple_reference(reference)
-        self._member_references.clear()
+        # self._Class_by_id.clear()
+        #
+        # # Resolve all the collection references
+        # for reference in self._collection_references:
+        #     replacement = reference.collection_resolver(self, reference)  # calls one of the non-simple resolvers below
+        #     # The final steps common to all collection resolvers are completed below
+        #     if reference.parent:
+        #         reference.parent[reference.index_in_parent] = replacement
+        #     self._objects_by_id[reference.id] = replacement
+        # self._collection_references.clear()
+        #
+        # # Resolve all the (remaining) simple member references
+        # for reference in self._member_references:
+        #     self._resolve_simple_reference(reference)
+        # self._member_references.clear()
 
         obj = self._objects_by_id[self._root_id]
-        self._objects_by_id.clear()
-        self._root_id = None
+        # self._objects_by_id.clear()
+        # self._root_id = None
         return obj
 
     # Convert a _Reference representing a .NET dictionary collection into a Python dict
@@ -714,9 +697,13 @@ def read_stream(streamfile):
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
         if hasattr(o, '_asdict'):
-            d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
-            d.update(o._asdict())
-            return d
+            if o._ref_count != 0:
+                return 'Circular ref'
+            else:
+                o._ref_count += 1
+                d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
+                d.update(o._asdict())
+                return d
         if isinstance(o, Array):
             return o.tolist()
         if isinstance(o, (datetime, timedelta)):
