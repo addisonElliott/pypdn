@@ -2,7 +2,6 @@
 # It is just meant for basic testing and such to make sure API is working
 
 from pdn import nrbf
-from pdn import nrbf2
 import pdn
 import json
 from pdn.namedlist import namedlist
@@ -22,7 +21,7 @@ filename = '../tests/data/imageRawNRBF'
 # filename = 'D:/Users/addis/Desktop/Untitled3.pdn'
 
 with open(filename, 'rb') as fh:
-    x = nrbf2.NRBF(fh)
+    x = nrbf.NRBF(fh)
     root = x.getRoot()
 
     print('Test')

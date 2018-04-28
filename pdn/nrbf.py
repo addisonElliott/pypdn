@@ -1,756 +1,750 @@
-# nrbf.py - .NET Remoting Binary Format reading library for Python 3
-# Copyright (C) 2017 Christopher Gurnee
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions
-# are met:
-#
-# 1. Redistributions of source code must retain the above copyright
-# notice, this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright
-# notice, this list of conditions and the following disclaimer in the
-# documentation and/or other materials provided with the distribution.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-# HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+import struct
+from datetime import timezone
+from functools import reduce
 
-__all__ = ['read_stream', 'Serialization', 'JSONEncoder']
+from pdn.util import *
 
-import itertools
-import json
-import re
-import sys
-from array import array as Array, typecodes
-from collections import OrderedDict, namedtuple
-from copy import deepcopy
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from keyword import iskeyword
-from struct import Struct, calcsize, pack
 
-import aenum
-from pdn.namedlist import namedlist
+# This library was inspired from the following code:
+#   https://github.com/gurnec/Undo_FFG/blob/master/nrbf.py
+# Thanks to Christopher Gurnee!
 
-# Decorator which adds an enum value (an int or a length-one bytes) and its associated
-# reader function to a registration dict (either PrimitiveType_readers or RecordType_readers)
-def _register_reader(type_dict, enum_value):
-    if isinstance(enum_value, int):
-        enum_value = bytes([enum_value])  # convert from int to length-one bytes
-    else:
-        assert isinstance(enum_value, bytes) and len(enum_value) == 1
+# TODO Do documentation and docstrings for this
 
-    def decorator(read_func):
-        type_dict[enum_value] = read_func
-        return read_func
+class NRBFError(Exception):
+    """Exceptions for NRBFError class."""
+    pass
+
+
+# Decorator which adds an enum value (an int or a length-one bytes object) and its associated reader function to a
+# registration dict (either PrimitiveTypeReaders or RecordTypeReaders)
+# The last two arguments, primitiveStructs and primitiveFormat are only specified for primitive types to create the
+# Struct object. The Struct object parses the format and makes it quicker to parse the numbers by calling Struct.unpack
+def _registerReader(typeDict, typeValue, primitiveStructs=None, primitiveFormat=None):
+    assert isinstance(typeValue, int)
+
+    def decorator(readFunction):
+        if primitiveStructs is not None:
+            primitiveStructs[typeValue] = struct.Struct(primitiveFormat)
+
+        typeDict[typeValue] = readFunction
+        return readFunction
 
     return decorator
 
 
-class Serialization:
-    def __init__(self, streamfile, can_overwrite_member=False):
-        """
-        :param streamfile: a file-like object in .NET Remoting Binary Format
-        :param can_overwrite_member: iff True, overwrite_member() may be called
-        """
-        assert streamfile.readable()
-        if can_overwrite_member:
-            assert streamfile.writable()
-            assert streamfile.seekable()
-        self._file = streamfile
-        self._Class_by_id = {}  # see _read_ClassInfo()
-        self._objects_by_id = {}  # all referenceable objects indexed by ObjectId
-        self._root_id = None  # the id of the single root object
-        self._member_references = []  # all seen simple references, see _read_MemberReference()
-        self._collection_references = []  # all seen collection references, e.g. .NET dicts and lists
-        self._add_overwrite_info = can_overwrite_member
-        self._overwrite_info_by_pyid = {}  # if above is True, overwrite_info objs indexed by python id()
+class NRBF:
+    # Dictionary that contains functions to call when reading records and primitives from NRBF file
+    _RecordTypeReaders = {}
+    _PrimitiveTypeReaders = {}
 
-    # Below are a set of "readers" and other support types, one per defined structure
-    # in revision 11.0 of the ".NET Remoting: Binary Format Data Structure" specification
-    # in approximately the same order of each structure's definition. Each one reads in
-    # the structure's elements, and depending on the reader type may return some or all
-    # of the read values. This first section implements the Primitive Types, each one
-    # returning the closest Python analogous type to the Primitive Type read.
-    ######## Reference: https://msdn.microsoft.com/en-us/library/cc236844.aspx ########
+    # Dictionary that contains Struct objects for each of the primitive types. The Struct objects are precompiled to
+    # speed up parsing the number
+    _PrimitiveTypeStructs = {}
 
-    # A dict of all PrimitiveType readers indexed by a length-one PrimitiveTypeEnumeration bytes object
-    _PrimitiveType_readers = {}
+    # Dictionary contains stuff for reading primitive arrays
+    _PrimitiveTypeArrayReaders = {}
 
-    @_register_reader(_PrimitiveType_readers, 3)
-    def _read_Char(self):
-        utf8_bytes = bytearray()
-        while True:
-            utf8_bytes += self._file.read(1)
+    # Dictionary containing readers for additional info in classes
+    _AdditionalInfoReaders = {}
+
+    def __init__(self, stream=None, filename=None):
+        self.stream = None
+        self.rootID = None
+        self.headerID = None
+        self.referencesResolved = None
+
+        # Dictionary of binary libraries with their linked objects
+        self.binaryLibraries = {}
+
+        # Keep track of class and objects by their ID
+        self.classByID = {}
+        self.objectsByID = {}
+
+        # Keeps track of references so that after reading is done, the references can be resolved
+        # Member references are for class members while collection references replace the system collections
+        # with Python equivalent types such as dict or list
+        self._memberReferences = []
+        self._collectionReferences = []
+
+        # If a stream or filename to be loaded is given, then call the read function
+        # This makes the syntax cleaner to allow this creation of class and loading of data all in one line
+        if stream is not None or filename is not None:
+            self.read(stream, filename)
+
+    def read(self, stream=None, filename=None):
+        if stream is None and filename is not None:
+            stream = open(filename, 'rb')
+
+        assert stream.readable()
+
+        if self.stream is not None:
+            # Means we are in the middle of reading or writing data, throw exception probably
+            raise NRBFError('Class is already reading from a stream! Please close the stream before trying again')
+
+        if self.rootID is not None:
+            # File has already been loaded so we must reset everything
+            self.rootID = None
+            self.headerID = None
+            self.binaryLibraries = {}
+            self.classByID = {}
+            self.objectsByID = {}
+            self._memberReferences = []
+            self._collectionReferences = []
+
+        self.stream = stream
+
+        # Read header
+        self._readRecord()
+        if self.rootID is None:
+            raise NRBFError('Invalid stream, unable to read header. File may be corrupted')
+
+        # Keep reading records until we receive a MessageEnd record
+        while not isinstance(self._readRecord(), MessageEnd):
+            pass
+
+        # Resolve all the collection references
+        self.resolveReferences()
+
+        # Once we are done reading, we set the stream to None because it will not be used
+        self.stream = None
+
+    def write(self, stream=None, filename=None):
+        if stream is None and filename is not None:
+            stream = open(filename, 'wb')
+
+        assert stream.writable()
+        assert stream.seekable()
+
+    def getRoot(self):
+        assert self.rootID is not None
+
+        return self.objectsByID[self.rootID]
+
+    def resolveReferences(self):
+        # Resolve all the collection references
+        for reference in self._collectionReferences:
+            # Calls one of the resolvers
+            replacement = reference.collectionResolver(self, reference)
+
+            # The final steps common to all collection resolvers are completed below
+            if reference.parent:
+                reference.parent[reference.index_in_parent] = replacement
+
+            self.objectsByID[reference._id] = replacement
+
+        # Note: Collection references must be saved so that it can be converted back
+        # when saving the file again.
+
+        # Resolve all the (remaining) simple member references
+        for reference in self._memberReferences:
+            self._resolveSimpleReference(reference)
+        self._memberReferences.clear()
+
+        self.referencesResolved = True
+
+    def unresolveReferences(self):
+        # Loop through all of the objects
+        for _, object in self.objectsByID.items():
+            # Attempt to iterate through the object
+            # If it doesnt work, then move on to the next item because there wont need to be any
+            # references.
+            # Otherwise, if any of the items have an object ID, create a reference
             try:
-                return utf8_bytes.decode('utf-8')
+                for index, item in enumerate(object):
+                    if hasattr(item, '_id'):
+                        # TODO I need to add back to resolvedReferences thing, but I would like to get rid of that anyway!
+                        object[index] = Reference(item._id, object, index)
+            except TypeError:
+                pass
+
+        self.referencesResolved = False
+
+    def toJSON(self, resolveReferences=True, **kwargs):
+        # Resolve or unresolve the references based on what the user desires
+        # and the current state
+        if resolveReferences and not self.referencesResolved:
+            self.resolveReferences()
+        elif not resolveReferences and self.referencesResolved:
+            self.unresolveReferences()
+
+        jsonEncoder = JSONEncoder(**kwargs)
+        return jsonEncoder.encode(self)
+
+    # region Primitive reader functions
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Boolean, _PrimitiveTypeStructs, '?')
+    def _readBool(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Boolean].unpack(self.stream.read(1))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Byte, _PrimitiveTypeStructs, 'B')
+    @_registerReader(_AdditionalInfoReaders, BinaryType.Primitive)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.PrimitiveArray)
+    def _readByte(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Byte].unpack(self.stream.read(1))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Char)
+    def _readChar(self):
+        utf8Bytes = bytearray()
+        while True:
+            utf8Bytes += self.stream.read(1)
+            try:
+                return utf8Bytes.decode('utf-8')
             except UnicodeDecodeError:
-                if len(utf8_bytes) > 4:
-                    raise
+                if len(utf8Bytes) > 4:
+                    raise NRBFError('Invalid char read from NRBF file, longer than 4 bytes: {0}'.format(utf8Bytes))
 
-    @_register_reader(_PrimitiveType_readers, 12)
-    def _read_TimeSpan(self):
-        return timedelta(microseconds=self._read_Int64() / 10)  # units of 100 nanoseconds
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Decimal)
+    def _read_Decimal(self):
+        return Decimal(self._readString())
 
-    @_register_reader(_PrimitiveType_readers, 13)
-    def _read_DateTime(self):
-        ticks = self._read_UInt64()
-        kind = ticks >> 62  # the 2 most significant bits store the "kind"
-        ticks &= (1 << 62) - 1  # all but the above
-        if ticks >= 1 << 61:  # if negative, reinterpret
-            ticks -= 1 << 62  # as 62-bit two's complement
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Double, _PrimitiveTypeStructs, '<d')
+    def _readDouble(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Double].unpack(self.stream.read(8))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Int16, _PrimitiveTypeStructs, '<h')
+    def _readInt16(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Int16].unpack(self.stream.read(2))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Int32, _PrimitiveTypeStructs, '<i')
+    def _readInt32(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Int32].unpack(self.stream.read(4))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Int64, _PrimitiveTypeStructs, '<q')
+    def _readInt64(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Int64].unpack(self.stream.read(8))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.SByte, _PrimitiveTypeStructs, 'b')
+    def _readSByte(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.SByte].unpack(self.stream.read(1))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Single, _PrimitiveTypeStructs, '<f')
+    def _readSingle(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.Single].unpack(self.stream.read(4))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.TimeSpan)
+    def _readTimeSpan(self):
+        # 64-bit integer that represents time span in increments of 100 nanoseconds
+        # Divide by 10 to get into microseconds
+        return timedelta(microseconds=self._readInt64() / 10)
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.DateTime)
+    def _readDateTime(self):
+        ticks = self._readUInt64()
+
+        # Two MSB store kind, 0 = no timezone, 1 = UTC, 2 = local timezone
+        kind = ticks >> 62
+        # Remaining 62-bits are the number of 100ns increments from 12:00:00 January 1, 0001
+        ticks &= (1 << 62) - 1
+        # If negative, then reinterpret as 62-bit two's complement
+        if ticks >= 1 << 61:
+            ticks -= 1 << 62
+
+        # Create a datetime that starts at the beginning and then increment it by the number of microseconds
         time = datetime(1, 1, 1)
         try:
             time += timedelta(microseconds=ticks / 10)
         except OverflowError:
             pass
+
+        # Update datetime object to have the appropriate timezone
+        # If kind is 1, then this is UTC and if kind is 2, then this is local timezone
         if kind == 1:
             time = time.replace(tzinfo=timezone.utc)
         elif kind == 2:
-            try:
-                time = time.astimezone()  # kind 2 is the local time zone
-            except OSError:
-                pass
+            LOCAL_TIMEZONE = datetime.now(timezone.utc).astimezone().tzinfo
+            time = time.replace(tzinfo=LOCAL_TIMEZONE)  # kind 2 is the local time zone
+
         return time
 
-    @_register_reader(_PrimitiveType_readers, 18)
-    def _read_LengthPrefixedString(self):
-        length = 0
-        for bit_range in range(0, 5 * 7, 7):  # each bit range is 7 bits long, with at most 5 of them
-            byte = self._read_Byte()
-            length += (byte & ((1 << 7) - 1)) << bit_range  # highest bit masked out, then shifted
-            if byte & (1 << 7) == 0:  # the "is there more?" (highest/most significant) bit
-                break
-        else:
-            raise OverflowError('LengthPrefixedString overflow')
-        return self._file.read(length).decode('utf-8')
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.UInt16, _PrimitiveTypeStructs, '<H')
+    def _readUInt16(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.UInt16].unpack(self.stream.read(2))[0]
 
-    @_register_reader(_PrimitiveType_readers, 5)
-    def _read_Decimal(self):
-        return Decimal(self._read_LengthPrefixedString())
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.UInt32, _PrimitiveTypeStructs, '<I')
+    def _readUInt32(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.UInt32].unpack(self.stream.read(4))[0]
 
-    @_register_reader(_PrimitiveType_readers, 17)
-    def _read_Null(self):
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.UInt64, _PrimitiveTypeStructs, '<Q')
+    def _readUInt64(self):
+        return self._PrimitiveTypeStructs[PrimitiveType.UInt64].unpack(self.stream.read(8))[0]
+
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Null)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.String)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.Object)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.ObjectArray)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.StringArray)
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNull)
+    def _readNull(self):
         return None
 
-    # Creates the rest of the PrimitiveType readers (those based on struct.unpack);
-    # this only works when it's called after the class has been fully defined.
-    _array_format_by_primitive_type = {}  # array-format-specs  indexed by PrimitiveTypeEnumeration length-one bytes
-    _struct_format_by_primitive_type = {}  # struct-format-specs indexed by PrimitiveTypeEnumeration length-one bytes
+    @_registerReader(_PrimitiveTypeReaders, PrimitiveType.String)
+    @_registerReader(_AdditionalInfoReaders, BinaryType.SystemClass)
+    def _readString(self):
+        length = 0
 
-    @classmethod
-    def _create_PrimitiveType_readers(cls):
-        for enum_value, name, format in (
-                (1, '_read_Boolean', '?'),
-                (2, '_read_Byte', 'B'),
-                (6, '_read_Double', '<d'),
-                (7, '_read_Int16', '<h'),
-                (8, '_read_Int32', '<l'),
-                (9, '_read_Int64', '<q'),
-                (10, '_read_SByte', 'b'),
-                (11, '_read_Single', '<f'),
-                (14, '_read_UInt16', '<H'),
-                (15, '_read_UInt32', '<L'),
-                (16, '_read_UInt64', '<Q')):
-            enum_value = bytes([enum_value])  # convert from int to length-one bytes
-            if format[-1] in typecodes:  # if the format can also be used to create an array type
-                cls._array_format_by_primitive_type[enum_value] = format[-1]  # (the [-1] skips the '<' flag)
-            cls._struct_format_by_primitive_type[enum_value] = format
-            struct = Struct(format)
-            length = calcsize(format)
-            reader = lambda self, s=struct, l=length: s.unpack(self._file.read(l))[0]
-            setattr(cls, name, _register_reader(cls._PrimitiveType_readers, enum_value)(reader))
+        # Each bit range is 7 bits long with a maximum of 5 bytes
+        for bit_range in range(0, 5 * 7, 7):
+            byte = self._readByte()
+
+            # Remove the last bit from the length (used to indicate if there is another byte to come)
+            # Then shift the number to the appropiate bit range and add it
+            length += (byte & ((1 << 7) - 1)) << bit_range
+
+            # Check MSB and if it is zero, this is the last length byte and we are ready to read string
+            if byte & (1 << 7) == 0:
+                break
+        else:
+            # For-else statements in Python are useful! This will be only happen if the for successfully completes
+            raise NRBFError('NRBF LengthPrefixedString overflow')
+
+        # Read the string
+        return self.stream.read(length).decode('utf-8')
+
+    # endregion
+
+    # region Primitive Array reader functions
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Boolean)
+    def _readBoolArray(self, length):
+        return struct.unpack('<{0}?'.format(length), self.stream.read(length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Byte)
+    def _readByteArray(self, length):
+        return struct.unpack('<{0}B'.format(length), self.stream.read(length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Double)
+    def _readDoubleArray(self, length):
+        return struct.unpack('<{0}d'.format(length), self.stream.read(8 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int16)
+    def _readInt16Array(self, length):
+        return struct.unpack('<{0}h'.format(length), self.stream.read(2 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int32)
+    def _readInt32Array(self, length):
+        return struct.unpack('<{0}i'.format(length), self.stream.read(4 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int64)
+    def _readInt64Array(self, length):
+        return struct.unpack('<{0}q'.format(length), self.stream.read(8 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.SByte)
+    def _readSByteArray(self, length):
+        return struct.unpack('<{0}b'.format(length), self.stream.read(length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Single)
+    def _readSingleArray(self, length):
+        return struct.unpack('<{0}f'.format(length), self.stream.read(4 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt16)
+    def _readUInt16Array(self, length):
+        return struct.unpack('<{0}H'.format(length), self.stream.read(2 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt32)
+    def _readUInt32Array(self, length):
+        return struct.unpack('<{0}I'.format(length), self.stream.read(4 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt64)
+    def _readUInt64Array(self, length):
+        return struct.unpack('<{0}Q'.format(length), self.stream.read(8 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.String)
+    def _readStringArray(self, length):
+        return [self._readString() for i in range(length)]
+
+    # endregion
+
+    # region AdditionalInfo reader functions
+
+    # Note: Remaining reader functions are attached in other sections to existing functions
 
     # The ClassTypeInfo structure is read and ignored
-    def _read_ClassTypeInfo(self):
-        self._read_LengthPrefixedString()  # TypeName
-        self._read_Int32()  # LibraryId
+    @_registerReader(_AdditionalInfoReaders, BinaryType.Class)
+    def _readClassTypeInfo(self):
+        name = self._readString()
+        libraryID = self._readInt32()
 
-    @aenum.unique
-    class _MessageFlags(aenum.Flag):
-        NoArgs = 0x00000001
-        ArgsInline = 0x00000002
-        ArgsIsArray = 0x00000004
-        ArgsInArray = 0x00000008
-        NoContext = 0x00000010
-        ContextInline = 0x00000020
-        ContextInArray = 0x00000040
-        MethodSignatureInArray = 0x00000080
-        PropertiesInArray = 0x00000100
-        NoReturnValue = 0x00000200
-        ReturnValueVoid = 0x00000400
-        ReturnValueInline = 0x00000800
-        ReturnValueInArray = 0x00001000
-        ExceptionInArray = 0x00002000
-        GenericMethod = 0x00008000
+        return (name, libraryID)
 
-    def _read_ValueWithCode(self):
-        return self._PrimitiveType_readers[self._file.read(1)](self)
+    # endregion
 
-    _read_StringValueWithCode = _read_ValueWithCode
+    # region Record reader functions
 
-    def _read_ArrayOfValueWithCode(self):
-        return [self._read_ValueWithCode() for i in range(self._read_Int32())]
+    def _readRecord(self):
+        recordType = self._readByte()
 
-    # A dict of all RecordType readers indexed by a length-one RecordTypeEnumeration bytes object
-    _RecordType_readers = {}
+        return self._RecordTypeReaders[recordType](self)
 
-    @_register_reader(_RecordType_readers, 21)
-    def _read_BinaryMethodCall(self):
-        raise NotImplementedError('BinaryMethodCall')
-        # flags = self._MessageFlags(self._read_Int32())  # MessageEnum
-        # self._read_StringValueWithCode()                # MethodName
-        # self._read_StringValueWithCode()                # TypeName
-        # if flags & self._MessageFlags.ContextInline:
-        #     self._read_StringValueWithCode()            # CallContext
-        # if flags & self._MessageFlags.ArgsInline:
-        #     self._read_ArrayOfValueWithCode()           # Args
+    def _readPrimitive(self, primitiveType):
+        return self._PrimitiveTypeReaders[primitiveType](self)
 
-    @_register_reader(_RecordType_readers, 22)
-    def _read_BinaryMethodReturn(self):
-        raise NotImplementedError('BinaryMethodReturn')
-        # flags = self._MessageFlags(self._read_Int32())  # MessageEnum
-        # if flags & self._MessageFlags.ReturnValueInline:
-        #     self._read_ValueWithCode()                  # ReturnValue
-        # if flags & self._MessageFlags.ContextInline:
-        #     self._read_StringValueWithCode()            # CallContext
-        # if flags & self._MessageFlags.ArgsInline:
-        #     self._read_ArrayOfValueWithCode()           # Args
+    @_registerReader(_RecordTypeReaders, RecordType.SerializedStreamHeader)
+    def _readSerializationHeaderRecord(self):
+        self.rootID = self._readInt32()
+        self.headerID = self._readInt32()
+        majorVersion, minorVersion = self._readInt32(), self._readInt32()
 
-    ######## Classes ########
+        if majorVersion != 1 or minorVersion != 0:
+            raise NRBFError('Major and minor version for serialization header is incorrect: {0} {1}'.format(
+                majorVersion, minorVersion))
 
-    # Reads a ClassInfo structure, and if the Class's ObjectId hasn't yet been seen, adds to
-    # self._Class_by_id a new Python class with the same members as the ClassInfo specifies.
-    def _read_ClassInfo(self):
-        object_id = self._read_Int32()
-        class_name = self._read_LengthPrefixedString()
-        member_count = self._read_Int32()
-        member_names = [self._read_LengthPrefixedString() for i in range(member_count)]
-        unique_members = set()
-        for member_num, member_name in enumerate(member_names):
-            member_name = make_unique(sanitize_identifier(member_name), unique_members)
-            unique_members.add(member_name)
-            member_names[member_num] = member_name
-        Class = namedlist(sanitize_identifier(class_name), member_names, default=None)
+        if self.rootID == 0:
+            raise NotImplementedError(
+                'Root ID is zero indicating that a BinaryMethodCall is available. Not implemented yet')
 
-        # Testing
-        Class.__repr__ = classmethod(test_repr)
+    @_registerReader(_RecordTypeReaders, RecordType.ClassWithId)
+    def _readClassWithId(self):
+        objectID = self._readInt32()
+        metadataID = self._readInt32()
+        cls = self.classByID[metadataID]
 
-        Class._id = object_id
-        Class._primitive_types = {}  # filled in below by _read_MemberTypeInfo()
-        Class._is_system_class = False
-        self._Class_by_id[object_id] = Class
-        return Class
+        # Only instance where the objectID does NOT equal the class ID is here!
+        return self._readClassMembers(cls(), objectID)
 
-    # Readers for the AdditionalInfos member of MemberTypeInfo indexed by
-    # BinaryTypeEnumeration ints; created after this class is fully defined
-    _AdditionalInfo_readers = ()
+    @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembers)
+    def _readSystemClassWithMembers(self):
+        cls = self._readClassInfo(isSystemClass=True)
+        cls._typeInfo = None
 
-    def _read_MemberTypeInfo(self, Class):
-        binary_types = [self._read_Byte() for m in Class._fields]  # BinaryTypeEnums
-        for member_num, binary_type in enumerate(binary_types):  # AdditionalInfos
-            additional_info = self._AdditionalInfo_readers[binary_type](self)
-            if binary_type == 0:  # (0 == BinaryTypeEnumeration.Primitive)
-                Class._primitive_types[member_num] = additional_info  # save any PrimitiveType for later
+        return self._readClassMembers(cls(), cls._id)
 
-    @_register_reader(_RecordType_readers, 5)
-    def _read_ClassWithMembersAndTypes(self):
-        Class = self._read_ClassInfo()
-        self._read_MemberTypeInfo(Class)
-        self._read_Int32()  # LibraryId is ignored
-        return self._read_members_into(Class(), Class._id, Class._primitive_types.get)
+    @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembers)
+    def _readClassWithMembers(self):
+        cls = self._readClassInfo(isSystemClass=False)
+        cls._typeInfo = None
+        libraryID = self._readInt32()
 
-    @_register_reader(_RecordType_readers, 3)
-    def _read_ClassWithMembers(self):
-        Class = self._read_ClassInfo()
-        self._read_Int32()  # LibraryId is ignored
-        return self._read_members_into(Class(), Class._id, Class._primitive_types.get)
+        return self._readClassMembers(cls(), cls._id, libraryID)
 
-    @_register_reader(_RecordType_readers, 4)
-    def _read_SystemClassWithMembersAndTypes(self):
-        Class = self._read_ClassInfo()
-        Class._is_system_class = True
-        self._read_MemberTypeInfo(Class)
-        return self._read_members_into(Class(), Class._id, Class._primitive_types.get)
+    @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
+    def _readSystemClassWithMembersAndTypes(self):
+        cls = self._readClassInfo(isSystemClass=True)
+        self._readMemberTypeInfo(cls)
 
-    @_register_reader(_RecordType_readers, 2)
-    def _read_SystemClassWithMembers(self):
-        Class = self._read_ClassInfo()
-        Class._is_system_class = True
-        return self._read_members_into(Class(), Class._id, Class._primitive_types.get)
+        return self._readClassMembers(cls(), cls._id)
 
-    @_register_reader(_RecordType_readers, 1)
-    def _read_ClassWithId(self):
-        object_id = self._read_Int32()
-        Class = self._Class_by_id[self._read_Int32()]  # MetadataId
-        return self._read_members_into(Class(), object_id, Class._primitive_types.get)
+    @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembersAndTypes)
+    def _readClassWithMembersAndTypes(self):
+        cls = self._readClassInfo(isSystemClass=False)
+        self._readMemberTypeInfo(cls)
+        libraryID = self._readInt32()
 
-    # If primitive_type is not None, read the specified primitive_type with one of the
-    # PrimitiveType_readers. Otherwise read the next RecordType in the streamfile with
-    # one of the RecordType_readers. If overwrite_info is not None, add overwrite info
-    # (a tuple containing: file position, struct type) to overwrite_info[overwrite_index]
-    # if the value read is an overwritable primitive. Finally, returns the value read.
-    def _read_Record_or_Primitive(self, primitive_type, overwrite_info=None, overwrite_index=None):
-        if primitive_type:
-            if overwrite_info is not None:
-                format = self._struct_format_by_primitive_type.get(primitive_type)
-                if format:
-                    overwrite_info[overwrite_index] = self._file.tell(), format
-            return self._PrimitiveType_readers[primitive_type](self)
-        else:
-            record_type = self._file.read(1)
-            # If overwrite_info is not None and record_type == MemberPrimitiveTyped, parse it ourselves--
-            # read in the PrimitiveTypeEnum and call ourselves to finish parsing and add the overwrite_info
-            if overwrite_info is not None and record_type == '\x08':
-                return self._read_Record_or_Primitive(self._file.read(1), overwrite_info, overwrite_index)
-            return self._RecordType_readers[record_type](self)
+        return self._readClassMembers(cls(), cls._id, libraryID)
 
-    _Reference = namedlist('_Reference',  # see _read_MemberReference()
-                           'id parent index_in_parent resolved collection_resolver orig_obj', default=None)
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryObjectString)
+    def _readBinaryObjectString(self):
+        objectID = self._readInt32()
+        string = self._readString()
+        self.objectsByID[objectID] = string
 
-    # Reads members or array elements into the 'obj' pre-allocated list or class instance
-    def _read_members_into(self, obj, object_id, members_primitive_type):
-        assert callable(
-            members_primitive_type)  # when called with the member_num, returns any respective primitive type
-        if self._add_overwrite_info:
-            # create the object which will store the overwrite info for all the members in obj
-            overwrite_info = [None] * len(obj) if isinstance(obj, list) else obj.__class__()
-        else:
-            overwrite_info = None
-        member_num = 0
-        while member_num < len(obj):
-            primitive_type = members_primitive_type(member_num)
-            val = self._read_Record_or_Primitive(primitive_type, overwrite_info, member_num)
-            if isinstance(val, self._BinaryLibrary):  # a BinaryLibrary can precede the actual member, it's ignored
-                val = self._read_Record_or_Primitive(primitive_type, overwrite_info, member_num)
-            if isinstance(val, self._ObjectNullMultiple):  # represents one or more empty members
-                member_num += val.count
-                continue
-            if isinstance(val, self._Reference):  # see _read_MemberReference()
-                val.parent = obj
-                val.index_in_parent = member_num
-            obj[member_num] = val
-            member_num += 1
-        if overwrite_info is not None:
-            self._overwrite_info_by_pyid[id(obj)] = overwrite_info
-        # If this object is a .NET collection (e.g. a Generic dict or list) which can be
-        # replaced by a native Python type, insert a collection _Reference instead of the raw
-        # object which will be resolved later in read_stream() using a "collection resolver"
-        if getattr(obj.__class__, '_is_system_class', False):
-            for collection_name, resolver in self._collection_resolvers:
-                if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
-                    obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
-                    self._collection_references.append(obj)
-                    break
-        self._objects_by_id[object_id] = obj
-        return obj
-
-    ######## Arrays ########
-
-    @aenum.unique
-    class _BinaryArrayTypeEnumeration(aenum.Enum):
-        Single = 0
-        Jagged = 1
-        Rectangular = 2
-        SingleOffset = 3
-        JaggedOffset = 4
-        RectangularOffset = 5
-
-        def is_offset(self):
-            return self in (self.SingleOffset, self.JaggedOffset, self.RectangularOffset)
-
-        def is_rectangular(self):
-            return self in (self.Rectangular, self.RectangularOffset)
-
-    def _read_ArrayInfo(self):
-        return (self._read_Int32(),  # ObjectId
-                self._read_Int32())  # Length
-
-    # This might not be able to use _read_members_into() since BinaryArrays are much more complex than
-    # other types, thus it has no choice but to reimplement much of what _read_members_into() does
-    @_register_reader(_RecordType_readers, 7)
-    def _read_BinaryArray(self):
-        object_id = self._read_Int32()
-        array_type = self._BinaryArrayTypeEnumeration(self._read_Byte())
-        rank = self._read_Int32()
-        lengths = [self._read_Int32() for i in range(rank)]
-        if array_type.is_offset():
-            [self._read_Int32() for i in range(rank)]  # LowerBounds are not implemented; they're ignored
-        binary_type = self._read_Byte()
-        additional_info = self._AdditionalInfo_readers[binary_type](self)
-        primitive_type = additional_info if binary_type == 0 else None  # (0 == BinaryTypeEnumeration.Primitive)
-        # If the BinaryArray is multidimensional, the complex code branch is required:
-        if array_type.is_rectangular():
-            array_format = self._array_format_by_primitive_type.get(primitive_type) if primitive_type else None
-            if array_format:  # if not None, a Python Array can be used for the *last* dimension...
-                array_length = lengths.pop()  # ...which is removed from the lengths list here
-            array = multidimensional_array(lengths)  # preallocate a list of lists (it's not a Python Array)
-            skip = 0
-            for indexes in itertools.product(*[range(l) for l in lengths]):  # iterates through all of the indexes
-                if array_format:
-                    val = self._read_Array_native_elements(array_format,
-                                                           array_length)  # read in the last index in one call
-                else:
-                    if skip > 0:
-                        skip -= 1
-                        continue
-                    val = self._read_Record_or_Primitive(primitive_type)
-                    if isinstance(val,
-                                  self._BinaryLibrary):  # a BinaryLibrary can precede the actual array element, it's ignored
-                        val = self._read_Record_or_Primitive(primitive_type)
-                    if isinstance(val, self._ObjectNullMultiple):  # represents one or more empty elements
-                        skip = val.count - 1  # counts this iteration which we're skipping right now
-                        continue
-                    if isinstance(val, self._Reference):  # see _read_MemberReference()
-                        list_indexes = ''.join('[%i]' % i for i in indexes[:-1])
-                        val.parent = eval('array%s' % list_indexes)  # the parent list, i.e. all but the last index
-                        val.index_in_parent = indexes[-1]  # the last index
-                list_indexes = ''.join('[%i]' % i for i in indexes)
-                exec('array%s = val' % list_indexes)
-            self._objects_by_id[object_id] = array
-            return array
-        else:  # else it's not multidimensional, the standard code branch can be used:
-            assert len(lengths) == 1
-            return self._read_Array_elements(lengths[0], object_id, primitive_type)
-
-    @_register_reader(_RecordType_readers, 16)
-    def _read_ArraySingleObject(self):
-        object_id, length = self._read_ArrayInfo()
-        return self._read_Array_elements(length, object_id)
-
-    @_register_reader(_RecordType_readers, 15)
-    def _read_ArraySinglePrimitive(self):
-        object_id, length = self._read_ArrayInfo()
-        primitive_type = self._file.read(1)
-        return self._read_Array_elements(length, object_id, primitive_type)
-
-    _read_ArraySingleString = _register_reader(_RecordType_readers, 17)(_read_ArraySingleObject)
-
-    def _read_Array_elements(self, length, object_id, primitive_type=None):
-        array_format = self._array_format_by_primitive_type.get(primitive_type) if primitive_type else None
-        if array_format:  # if not None, a Python Array can be used
-            array = self._read_Array_native_elements(array_format, length)
-            self._objects_by_id[object_id] = array
-            return array
-        return self._read_members_into([None] * length, object_id, lambda i: primitive_type)
-
-    assert sys.byteorder in ('little', 'big')
-
-    def _read_Array_native_elements(self, format, length):
-        if self._add_overwrite_info:
-            pos = self._file.tell()
-        array = Array(format)
-        array.fromfile(self._file, length)  # read them in one call
-        if sys.byteorder == 'big':
-            array.byteswap()
-        if self._add_overwrite_info:
-            format = '<' + format  # always little-endian
-            self._overwrite_info_by_pyid[id(array)] = [
-                (pos + offset, format) for offset in range(0, length * array.itemsize, array.itemsize)]
-        return array
-
-    _read_MemberPrimitiveTyped = _register_reader(_RecordType_readers, 8)(_read_ValueWithCode)
-
-    # Wherever an ObjectId is encountered above, it's added to the self._objects_by_id map
-    # along with the newly-created object. A MemberReference contains an IdRef which refers
-    # to an object in this map, however because MemberReferences can appear before the object
-    # to which they refer, they can't be resolved until the very end. Instead, a _Reference
-    # Python object is temporarily created which stores enough information (its parent and
-    # its index inside the parent) to eventually replace it with the actual object referenced
-    # once all of the objects have been read from the stream in read_stream().
-    @_register_reader(_RecordType_readers, 9)
-    def _read_MemberReference(self):
-        member_ref = self._Reference(self._read_Int32())  # IdRef
-        self._member_references.append(member_ref)  # (parent and index_in_parent should be set by the caller)
-        return member_ref
-
-    _read_ObjectNull = _register_reader(_RecordType_readers, 10)(_read_Null)
-
-    _ObjectNullMultiple = namedtuple('_ObjectNullMultiple', 'count')
-
-    @_register_reader(_RecordType_readers, 14)
-    def _read_ObjectNullMultiple(self):
-        return self._ObjectNullMultiple(self._read_Int32())
-
-    @_register_reader(_RecordType_readers, 13)
-    def _read_ObjectNullMultiple256(self):
-        return self._ObjectNullMultiple(self._read_Byte())
-
-    @_register_reader(_RecordType_readers, 6)
-    def _read_BinaryObjectString(self):
-        object_id = self._read_Int32()
-        string = self._read_LengthPrefixedString()
-        self._objects_by_id[object_id] = string
         return string
 
-    @_register_reader(_RecordType_readers, 0)
-    def _read_SerializationHeaderRecord(self):
-        self._root_id = self._read_Int32()
-        self._read_Int32()  # HeaderId is ignored
-        major_version = self._read_Int32()
-        minor_version = self._read_Int32()
-        if major_version != 1:
-            raise NotImplementedError('SerializationHeaderRecord.MajorVersion == {major_version}')
-        if minor_version != 0:
-            raise NotImplementedError('SerializationHeaderRecord.MinorVersion == {minor_version}')
-        if self._root_id == 0:
-            raise NotImplementedError('SerializationHeaderRecord.RootId == 0')
+    @_registerReader(_RecordTypeReaders, RecordType.MemberPrimitiveTyped)
+    def _readMemberPrimitiveTyped(self):
+        primitiveType = self._readInt32()
+        value = self._PrimitiveTypeReaders[primitiveType](self)
 
-    class _BinaryLibrary:
-        pass
+        return value
 
-    @_register_reader(_RecordType_readers, 12)
-    def _read_BinaryLibrary(self):
-        self._read_Int32()  # MinorVersion and
-        self._read_LengthPrefixedString()  # LibraryName are ignored
-        return self._BinaryLibrary()
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryArray)
+    def _readBinaryArray(self):
+        objectID = self._readInt32()
+        arrayType = self._readByte()
+        rank = self._readInt32()
+        lengths = [self._readInt32() for i in range(rank)]
 
-    class _MessageEnd:
-        pass
+        # The lower bounds are ignored currently
+        # Not sure of the implications or purpose of this
+        if arrayType in [BinaryArrayType.SingleOffset, BinaryArrayType.JaggedOffset, BinaryArrayType.RectangularOffset]:
+            lowerBounds = [self._readInt32() for i in range(rank)]
 
-    @_register_reader(_RecordType_readers, 11)
-    def _read_MessageEnd(self):
-        return self._MessageEnd()
+        binaryType = self._readByte()
+        additionalInfo = self._AdditionalInfoReaders[binaryType](self)
 
-    def read_header(self):
-        """Reads just the SerializationHeaderRecord from the streamfile.
-        It's not necessary to call this, however it may be called before read_stream() if desired.
-        Otherwise, read_stream() will raise an exception if the SerializationHeaderRecord isn't found.
+        # Get total length of items that we need to read
+        # This is just the product of all the elements in the lengths array
+        length = reduce(lambda x, y: x * y, lengths)
 
-        :return: True if the streamfile is in a supported .NET Remoting Binary Format
-        """
-        assert self._root_id is None, 'read_header() has not already been called'
-        try:
-            self._read_Record_or_Primitive(primitive_type=False)
-        except Exception:
-            return False
-        return self._root_id is not None
+        # If the items are primitives, use primitive array readers
+        # Otherwise, the items will be objects and should be read by reading records
+        if binaryType == BinaryType.Primitive:
+            array = self._PrimitiveTypeArrayReaders[additionalInfo](self, length)
+        else:
+            array = self._readObjectArray(length, objectID)
 
-    def read_stream(self):
-        """Read the streamfile in .NET Remoting Binary Format and extract its root object
+        # For a multidimensional array, take the 1D array that was read and convert it to ND
+        if arrayType in [BinaryArrayType.Rectangular, BinaryArrayType.RectangularOffset]:
+            array = convert1DArrayND(array, lengths)
 
-        :return: the root object contained in the stream
-        """
-        if self._root_id is None and not self.read_header():
-            raise RuntimeError('SerializationHeaderRecord not found (probably not an NRBF file)')
-        obj = None
-        while not isinstance(obj, self._MessageEnd):
-            obj = self._read_Record_or_Primitive(primitive_type=False)
-        self._Class_by_id.clear()
+        # Save the object by ID
+        # Only required for primitive because _readObjectArray saves the ID for you
+        # But we just overwrite it regardless
+        self.objectsByID[objectID] = array
 
-        # Resolve all the collection references
-        for reference in self._collection_references:
-            replacement = reference.collection_resolver(self, reference)  # calls one of the non-simple resolvers below
-            # The final steps common to all collection resolvers are completed below
-            if reference.parent:
-                reference.parent[reference.index_in_parent] = replacement
-            self._objects_by_id[reference.id] = replacement
-        self._collection_references.clear()
+        return array
 
-        # Resolve all the (remaining) simple member references
-        for reference in self._member_references:
-            self._resolve_simple_reference(reference)
-        self._member_references.clear()
+    # When object's with an object ID are encountered above, they are added to the _objectsByID dictionary.
+    # A MemberReference object contains the object ID that the reference refers to. These references are
+    # resolved at the end.
+    @_registerReader(_RecordTypeReaders, RecordType.MemberReference)
+    def _readMemberReference(self):
+        # objectID
+        ref = Reference(self._readInt32())
+        self._memberReferences.append(ref)
 
-        obj = self._objects_by_id[self._root_id]
-        self._objects_by_id.clear()
-        self._root_id = None
+        return ref
+
+    @_registerReader(_RecordTypeReaders, RecordType.MessageEnd)
+    def _readMessageEnd(self):
+        return MessageEnd()
+
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryLibrary)
+    def _readBinaryLibrary(self):
+        libraryID = self._readInt32()
+        libraryName = self._readString()
+        library = BinaryLibrary(libraryID, libraryName, {})
+        self.binaryLibraries[libraryID] = library
+
+        return library
+
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNullMultiple256)
+    def _readObjectNullMultiple256(self):
+        # Count
+        return ObjectNullMultiple(self._readByte())
+
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNullMultiple)
+    def _readObjectNullMultiple(self):
+        # Count
+        return ObjectNullMultiple(self._readInt32())
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySinglePrimitive)
+    def _readArraySinglePrimitive(self):
+        objectID, length = self._readArrayInfo()
+        primitiveType = self._readByte()
+
+        array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
+        self.objectsByID[objectID] = array
+
+        return array
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleObject)
+    def _read_ArraySingleObject(self):
+        objectID, length = self._readArrayInfo()
+
+        array = self._readObjectArray(length, objectID)
+
+        return array
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleString)
+    def _readArraySingleString(self):
+        objectID, length = self._readArrayInfo()
+        primitiveType = PrimitiveType.String
+
+        array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
+        self.objectsByID[objectID] = array
+
+        return array
+
+    @_registerReader(_RecordTypeReaders, RecordType.MethodCall)
+    def _read_MethodCall(self):
+        raise NotImplementedError('MethodCall')
+
+    @_registerReader(_RecordTypeReaders, RecordType.MethodReturn)
+    def _read_MethodReturn(self):
+        raise NotImplementedError('MethodReturn')
+
+    # endregion
+
+    # region Read helper classes
+
+    def _readArrayInfo(self):
+        # objectID and array length
+        return (self._readInt32(), self._readInt32())
+
+    # Reads a ClassInfo structure and creates and saves a new namedlist object with the same member and ClassInfo
+    # specifics
+    def _readClassInfo(self, isSystemClass=False):
+        objectID = self._readInt32()
+        className = self._readString()
+        memberCount = self._readInt32()
+        memberNames = [sanitizeIdentifier(self._readString()) for i in range(memberCount)]
+
+        # Create namedlist that will act as the class
+        # Set object ID for the class and save it by the object ID for later
+        cls = namedlist(sanitizeIdentifier(className), memberNames, default=None)
+
+        # Class ID is a special identifier to represent the class itself but not the data within of it
+        # For instance, you can declare the class once but then instantiate it multiple times
+        # The object ID is the unique identifier for the object itself and cannot be repeated
+        # In this instance, the classID and objectID are the same for the first instantiation
+        # The only way to get these different is to have a ClassWithID record and then this is
+        # set manually
+        cls._classID = cls._id = objectID
+        cls._isSystemClass = isSystemClass
+        self.classByID[objectID] = cls
+
+        return cls
+
+    def _readMemberTypeInfo(self, cls):
+        binaryTypes = [self._readByte() for member in cls._fields]
+        additionalInfo = [self._AdditionalInfoReaders[type](self) for type in binaryTypes]
+
+        # Combine the binary types and additional info into one tuple
+        # This gets saved to the class object because it will be used to set the members
+        # Also, if there is a ClassWithId object then it won't have type information but only
+        # the class ID so we will need to retain this information.
+        cls._typeInfo = tuple(zip(binaryTypes, additionalInfo))
+
+    # Reads members or array elements into the 'obj' pre-allocated list or class instance
+    def _readClassMembers(self, obj, objectID, libraryID=None):
+        index = 0
+        while index < len(obj._fields):
+            # If typeinfo is not defined, as is the case for ClassWithMembers and SystemClassWithMembers,
+            # then assume it is an object that can be read
+            # Not sure if this is a safe assumption because Microsoft isn't entirely clear when the member type
+            # information is 'unnecessary'
+            if obj._typeInfo is None:
+                binaryType, additionalInfo = BinaryType.Object, None
+            else:
+                binaryType, additionalInfo = obj._typeInfo[index]
+
+            if binaryType == BinaryType.Primitive:
+                value = self._readPrimitive(additionalInfo)
+            else:
+                value = self._readRecord()
+
+                if isinstance(value, BinaryLibrary):
+                    # BinaryLibrary can precede the actual member
+                    # Continue on to the actual member
+                    continue
+                elif isinstance(value, ObjectNullMultiple):
+                    # Skip a given number of indices
+                    index += value.count
+                    continue
+                elif isinstance(value, Reference):
+                    value.parent = obj
+                    value.indexInParent = index
+
+            obj[index] = value
+            index += 1
+
+        # If this object is a .NET collection (e.g. a Generic dict or list) which can be
+        # replaced by a native Python type, insert a collection _Reference instead of the raw
+        # object which will be resolved later in read() using a "collection resolver"
+        if getattr(obj.__class__, '_isSystemClass', False):
+            for name, resolver in self._collectionResolvers:
+                if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % name):
+                    obj = Reference(objectID, collectionResolver=resolver, originalObj=obj)
+                    self._collectionReferences.append(obj)
+                    break
+
+        self.objectsByID[objectID] = obj
+
+        # Use libraryID to append the class to that binary library
+        # This is particularly useful when saving the items again so that you save all of a binary library at once
+        if libraryID:
+            self.binaryLibraries[libraryID].objects[objectID] = obj
+
         return obj
 
+    def _readObjectArray(self, length, objectID):
+        array = [None] * length
+
+        index = 0
+        while index < length:
+            value = self._readRecord()
+
+            if isinstance(value, BinaryLibrary):
+                # BinaryLibrary can precede the actual member
+                # Continue on to the actual member
+                continue
+            elif isinstance(value, ObjectNullMultiple):
+                # Skip a given number of indices
+                index += value.count
+                continue
+            elif isinstance(value, Reference):
+                value.parent = array
+                value.indexInParent = index
+
+            # Save the object by ID
+            self.objectsByID[objectID] = array
+
+            array[index] = value
+            index += 1
+
+        return array
+
+    # endregion
+
+    # region Resolve references functions
+
+    # Convert a _Reference representing a MemberReference into its referenced object
+    def _resolveSimpleReference(self, reference):
+        if reference.resolved:
+            return
+
+        replacement = self.objectsByID[reference._id]
+        reference.parent[reference.indexInParent] = replacement
+
+        # Not sure when this would happen, doesn't hurt though!
+        reference.resolved = True
+
     # Convert a _Reference representing a .NET dictionary collection into a Python dict
-    def _resolve_dict_reference(self, dict_ref):
-        orig_obj = dict_ref.orig_obj
-        # If KeyValuePairs is itself a _Reference, it must be resolved first
-        if isinstance(orig_obj.KeyValuePairs, self._Reference):
-            self._resolve_simple_reference(orig_obj.KeyValuePairs)
+    def _resolveDictReference(self, reference):
+        originalObj = reference.originalObj
+
+        # If the key-value pairs of the dict are itself a Reference, then resolve those first
+        if isinstance(originalObj.KeyValuePairs, Reference):
+            self._resolveSimpleReference(originalObj.KeyValuePairs)
+
         replacement = {}
-        overwrite_info = {} if self._add_overwrite_info else None
-        for item in orig_obj.KeyValuePairs:
+
+        for item in originalObj.KeyValuePairs:
             try:
                 # If any key is a _Reference, it must be resolved first
                 # (value _References will be resolved later)
-                if isinstance(item.key, self._Reference):
-                    self._resolve_simple_reference(item.key)
+                if isinstance(item.key, Reference):
+                    self._resolveSimpleReference(item.key)
+
                 assert item.key not in replacement
                 replacement[item.key] = item.value
-                if overwrite_info is not None:
-                    overwrite_info[item.key] = self._overwrite_info_by_pyid[id(item)].value
-            except (AssertionError, TypeError):  # not all .NET dictionaries can be converted to Python dicts;
-                replacement = orig_obj  # if the conversion fails, just proceed w/the original object
+            except (AssertionError, TypeError):
+                # Not all .NET dictionaries can be converted to Python dicts
+                # If the conversion fails, just proceed w/ the original object
+                replacement = originalObj
                 break
         else:
-            # If any dict value is a _Reference, fix its parent and index_in_parent
+            # Assuming that the for loop completed successfully, indicating that all
+            # of the dictionary objects were converted,
+            # Then we need to fix the dictionary values for References
             for key, value in replacement.items():
-                if isinstance(value, self._Reference):
+                if isinstance(value, Reference):
                     value.parent = replacement
                     value.index_in_parent = key
-            if overwrite_info is not None:
-                self._overwrite_info_by_pyid[id(replacement)] = overwrite_info
+
         return replacement
 
-    # Convert a _Reference representing a .NET list collection into a Python list
-    def _resolve_list_reference(self, list_ref):
-        orig_obj = list_ref.orig_obj
-        # If items is itself a _Reference, it must be resolved first
-        if isinstance(orig_obj.items, self._Reference):
-            self._resolve_simple_reference(orig_obj.items)
-        replacement = orig_obj.items
-        # If any list element is a _Reference, fix its parent
+    # Convert a Reference representing a .NET list collection into a Python list
+    def _resolveListReference(self, reference):
+        originalObj = reference.originalObj
+
+        # If the components of the list are itself a Reference, then resolve those first
+        if isinstance(originalObj.items, Reference):
+            self._resolveSimpleReference(originalObj.items)
+
+        replacement = originalObj.items
+
+        # Update parent for all replacement elements if they are references
         for element in replacement:
-            if isinstance(element, self._Reference):
-                element.parent = replacement  # (the index_in_parent remains the same)
+            if isinstance(element, Reference):
+                element.parent = replacement
+
         return replacement
 
-    _collection_resolvers = (
-        ('Dictionary', _resolve_dict_reference),
-        ('List', _resolve_list_reference)
+    _collectionResolvers = (
+        ('Dictionary', _resolveDictReference),
+        ('List', _resolveListReference)
     )
 
-    # Convert a _Reference representing a MemberReference into its referenced object
-    def _resolve_simple_reference(self, member_ref):
-        assert not member_ref.collection_resolver
-        if member_ref.resolved:
-            return
-        replacement = self._objects_by_id[member_ref.id]
-        member_ref.parent[member_ref.index_in_parent] = replacement
-        member_ref.resolved = True
-
-    def overwrite_member(self, obj, member, value):
-        """Overwrite an object's member with a new value in the streamfile (does not change obj).
-
-        :param obj: an object in the hierarchy returned by read_stream()
-        :param member: a writable member (attribute) name, index (for lists/arrays), or key (for dicts) in obj
-        :param value: the new value to be written to the streamfile
-        """
-        assert self._add_overwrite_info, 'serialization object must have been constructed with can_overwrite_member == True'
-        overwrite_info = self._overwrite_info_by_pyid[id(obj)]
-        if isinstance(member, int) or isinstance(obj, dict):
-            pos, format = overwrite_info[member]
-        else:
-            pos, format = getattr(overwrite_info, member)
-        value = pack(format, value)
-        old_pos = self._file.tell()
-        try:
-            self._file.seek(pos)
-            self._file.write(value)
-        finally:
-            self._file.seek(old_pos)
-
-    def is_member_writable(self, obj, member):
-        """Returns True if the object's member can be overwritten.
-        Can (but isn't guaranteed to) raise an exception if the member doesn't exist.
-
-        :param obj: an object in the hierarchy returned by read_stream()
-        :param member: a member (attribute) name, index (for lists/arrays), or key (for dicts) in obj
-        """
-        assert self._add_overwrite_info, 'serialization object must have been constructed with can_overwrite_member == True'
-        overwrite_info = self._overwrite_info_by_pyid.get(id(obj))
-        if overwrite_info is None:
-            return False
-        if isinstance(member, int) or isinstance(obj, dict):
-            return overwrite_info[member] is not None
-        else:
-            return getattr(overwrite_info, member) is not None
-
-
-# Finish setting up the serialization class
-Serialization._create_PrimitiveType_readers()
-#
-Serialization._AdditionalInfo_readers = (
-    lambda self: self._file.read(1),  # 0 Primitive
-    Serialization._read_Null,  # 1 String
-    Serialization._read_Null,  # 2 Object
-    Serialization._read_LengthPrefixedString,  # 3 SystemClass
-    Serialization._read_ClassTypeInfo,  # 4 Class
-    Serialization._read_Null,  # 5 ObjectArray
-    Serialization._read_Null,  # 6 StringArray
-    lambda self: self._file.read(1),  # 7 PrimitiveArray
-)
-
-# Now that we're done adding PrimitiveType and RecordType readers, ensure they're
-# all present (except PrimitiveType 4 and RecordTypes 18-20 which aren't defined)
-assert all(bytes([i]) in Serialization._PrimitiveType_readers if i != 4 else True for i in range(1, 19))
-assert all(bytes([i]) in Serialization._RecordType_readers if not 18 <= i <= 20 else True for i in range(23))
-
-
-def read_stream(streamfile):
-    """Read a file in .NET Remoting Binary Format and extract its root object
-
-    :param streamfile: a file-like object
-    :return: the root object contained in the stream
-    """
-    return Serialization(streamfile).read_stream()
-
-
-# A JSONEncoder which can convert an object returned by read_stream() into json
-# (can't handle circular references; primarily intended for debugging purposes)
-class JSONEncoder(json.JSONEncoder):
-    def default(self, o):
-        if hasattr(o, '_asdict'):
-            if o._ref_count != 0:
-                return 'Circular ref'
-            else:
-                o._ref_count += 1
-                d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
-                d.update(o._asdict())
-                return d
-        if isinstance(o, Array):
-            return o.tolist()
-        if isinstance(o, (datetime, timedelta)):
-            return str(o)
-        if isinstance(o, Decimal):
-            return repr(o)
-        return super().default(o)
-
-
-# Returns a version of the identifier suitable to pass to namedlist
-def sanitize_identifier(identifier):
-    identifier = re.sub('[^a-z0-9_]', '_', identifier, flags=re.IGNORECASE).lstrip('0123456789_')
-    if not identifier:
-        return 'invalid_identifier'
-    if iskeyword(identifier):
-        identifier += '_'
-    assert identifier.isidentifier()
-    return identifier
-
-
-# Returns a version of the name which isn't present in the unique_set
-def make_unique(name, unique_set):
-    if name in unique_set:
-        for append in itertools.count(2):
-            replacement = name + str(append)
-            if replacement not in unique_set:
-                break
-        return replacement
-    return name
-
-
-# Pre-allocates a "multidimensional array", i.e. a list of lists of Nones
-def multidimensional_array(lengths):
-    if not lengths:
-        return None
-    arrays = [None] * lengths[-1]
-    for length in reversed(lengths[:-1]):
-        arrays = [deepcopy(arrays) for i in range(length)]
-    return arrays
-
-
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        sys.exit('Usage: %s streamfile' % sys.argv[0])
-    streamfile = open(sys.argv[1], 'rb')
-    json_encoder = JSONEncoder(indent=4)
-    while True:
-        print(json_encoder.encode(read_stream(streamfile)))
-        if streamfile.peek(1) == b'':
-            break
+    # endregion
