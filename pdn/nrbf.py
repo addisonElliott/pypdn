@@ -546,25 +546,25 @@ class Serialization:
         obj = None
         while not isinstance(obj, self._MessageEnd):
             obj = self._read_Record_or_Primitive(primitive_type=False)
-        # self._Class_by_id.clear()
-        #
-        # # Resolve all the collection references
-        # for reference in self._collection_references:
-        #     replacement = reference.collection_resolver(self, reference)  # calls one of the non-simple resolvers below
-        #     # The final steps common to all collection resolvers are completed below
-        #     if reference.parent:
-        #         reference.parent[reference.index_in_parent] = replacement
-        #     self._objects_by_id[reference.id] = replacement
-        # self._collection_references.clear()
-        #
-        # # Resolve all the (remaining) simple member references
-        # for reference in self._member_references:
-        #     self._resolve_simple_reference(reference)
-        # self._member_references.clear()
+        self._Class_by_id.clear()
+
+        # Resolve all the collection references
+        for reference in self._collection_references:
+            replacement = reference.collection_resolver(self, reference)  # calls one of the non-simple resolvers below
+            # The final steps common to all collection resolvers are completed below
+            if reference.parent:
+                reference.parent[reference.index_in_parent] = replacement
+            self._objects_by_id[reference.id] = replacement
+        self._collection_references.clear()
+
+        # Resolve all the (remaining) simple member references
+        for reference in self._member_references:
+            self._resolve_simple_reference(reference)
+        self._member_references.clear()
 
         obj = self._objects_by_id[self._root_id]
-        # self._objects_by_id.clear()
-        # self._root_id = None
+        self._objects_by_id.clear()
+        self._root_id = None
         return obj
 
     # Convert a _Reference representing a .NET dictionary collection into a Python dict

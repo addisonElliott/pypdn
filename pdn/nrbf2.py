@@ -54,19 +54,18 @@ class NRBF:
         self.rootID = None
         self.headerID = None
 
-        # TODO Do I want this?
-        # self._collection_references = []  # all seen collection references, e.g. .NET dicts and lists
-
         # Dictionary of binary libraries with their linked objects
         self.binaryLibraries = {}
 
         # Keep track of class and objects by their ID
-        # TODO Ensure that having two separate dictionaries is NOT worth it
         self.classByID = {}
         self.objectsByID = {}
 
         # Keeps track of references so that after reading is done, the references can be resolved
+        # Member references are for class members while collection references replace the system collections
+        # with Python equivalent types such as dict or list
         self._memberReferences = []
+        self._collectionReferences = []
 
         # If a stream or filename to be loaded is given, then call the read function
         # This makes the syntax cleaner to allow this creation of class and loading of data all in one line
@@ -84,9 +83,14 @@ class NRBF:
             raise NRBFError('Class is already reading from a stream! Please close the stream before trying again')
 
         if self.rootID is not None:
+            # File has already been loaded so we must reset everything
             self.rootID = None
             self.headerID = None
-            # TODO Check if this has already been loaded to reset stuff, maybe do by default anyway
+            self.binaryLibraries = {}
+            self.classByID = {}
+            self.objectsByID = {}
+            self._memberReferences = []
+            self._collectionReferences = []
 
         self.stream = stream
 
@@ -99,7 +103,24 @@ class NRBF:
         while not isinstance(self._readRecord(), MessageEnd):
             pass
 
-        # TODO Resolve references and collections stuff
+        # Resolve all the collection references
+        for reference in self._collectionReferences:
+            # Calls one of the resolvers
+            replacement = reference.collectionResolver(self, reference)
+
+            # The final steps common to all collection resolvers are completed below
+            if reference.parent:
+                reference.parent[reference.index_in_parent] = replacement
+
+            self.objectsByID[reference._id] = replacement
+
+        # Note: Collection references must be saved so that it can be converted back
+        # when saving the file again.
+
+        # Resolve all the (remaining) simple member references
+        for reference in self._memberReferences:
+            self._resolveSimpleReference(reference)
+        self._memberReferences.clear()
 
         # Once we are done reading, we set the stream to None because it will not be used
         self.stream = None
@@ -359,17 +380,20 @@ class NRBF:
         metadataID = self._readInt32()
         cls = self.classByID[metadataID]
 
+        # TODO Remove prints!
         print('ClassWithId', cls, cls._typeInfo)
 
-        return self._readClassMembers(cls())
+        # Only instance where the objectID does NOT equal the class ID is here!
+        return self._readClassMembers(cls(), objectID)
 
     @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembers)
     def _readSystemClassWithMembers(self):
         cls = self._readClassInfo(isSystemClass=True)
+        cls._typeInfo = None
 
         print('SystemClassWithMembers', cls, cls._typeInfo)
 
-        return self._readClassMembers(cls())
+        return self._readClassMembers(cls(), cls._id)
 
     @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembers)
     def _readClassWithMembers(self):
@@ -379,18 +403,16 @@ class NRBF:
 
         print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
 
-        return self._readClassMembers(cls(), libraryID)
+        return self._readClassMembers(cls(), cls._id, libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
     def _readSystemClassWithMembersAndTypes(self):
         cls = self._readClassInfo(isSystemClass=True)
-        cls._typeInfo = None
         self._readMemberTypeInfo(cls)
 
         print('SystemClassWithMembersAndTypes', cls, cls._typeInfo)
 
-        x = cls()
-        return self._readClassMembers(x)
+        return self._readClassMembers(cls(), cls._id)
 
     @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembersAndTypes)
     def _readClassWithMembersAndTypes(self):
@@ -400,8 +422,7 @@ class NRBF:
 
         print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
 
-        x = cls()
-        return self._readClassMembers(x, libraryID)
+        return self._readClassMembers(cls(), cls._id, libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.BinaryObjectString)
     def _readBinaryObjectString(self):
@@ -422,8 +443,6 @@ class NRBF:
 
         return value
 
-    # This might not be able to use _read_members_into() since BinaryArrays are much more complex than
-    # other types, thus it has no choice but to reimplement much of what _read_members_into() does
     @_registerReader(_RecordTypeReaders, RecordType.BinaryArray)
     def _readBinaryArray(self):
         objectID = self._readInt32()
@@ -448,13 +467,15 @@ class NRBF:
         if binaryType == BinaryType.Primitive:
             array = self._PrimitiveTypeArrayReaders[additionalInfo](self, length)
         else:
-            array = self._readObjectArray(length)
+            array = self._readObjectArray(length, objectID)
 
         # For a multidimensional array, take the 1D array that was read and convert it to ND
         if arrayType in [BinaryArrayType.Rectangular, BinaryArrayType.RectangularOffset]:
             array = convert1DArrayND(array, lengths)
 
         # Save the object by ID
+        # Only required for primitive because _readObjectArray saves the ID for you
+        # But we just overwrite it regardless
         self.objectsByID[objectID] = array
 
         print('BinaryArray', objectID, arrayType, rank, lengths, binaryType, additionalInfo, array)
@@ -471,7 +492,7 @@ class NRBF:
 
         self._memberReferences.append(ref)
 
-        print('MemberReference', ref.id)
+        print('MemberReference', ref._id)
 
         return ref
 
@@ -515,8 +536,7 @@ class NRBF:
     def _read_ArraySingleObject(self):
         objectID, length = self._readArrayInfo()
 
-        array = self._readObjectArray(length)
-        self.objectsByID[objectID] = array
+        array = self._readObjectArray(length, objectID)
 
         print('ArraySingleObject', objectID, array)
 
@@ -561,7 +581,14 @@ class NRBF:
         # Create namedlist that will act as the class
         # Set object ID for the class and save it by the object ID for later
         cls = namedlist(sanitizeIdentifier(className), memberNames, default=None)
-        cls._id = objectID
+
+        # Class ID is a special identifier to represent the class itself but not the data within of it
+        # For instance, you can declare the class once but then instantiate it multiple times
+        # The object ID is the unique identifier for the object itself and cannot be repeated
+        # In this instance, the classID and objectID are the same for the first instantiation
+        # The only way to get these different is to have a ClassWithID record and then this is
+        # set manually
+        cls._classID = cls._id = objectID
         cls._isSystemClass = isSystemClass
         self.classByID[objectID] = cls
 
@@ -578,7 +605,7 @@ class NRBF:
         cls._typeInfo = tuple(zip(binaryTypes, additionalInfo))
 
     # Reads members or array elements into the 'obj' pre-allocated list or class instance
-    def _readClassMembers(self, obj, libraryID=None):
+    def _readClassMembers(self, obj, objectID, libraryID=None):
         index = 0
         while index < len(obj._fields):
             # If typeinfo is not defined, as is the case for ClassWithMembers and SystemClassWithMembers,
@@ -607,30 +634,29 @@ class NRBF:
                     value.parent = obj
                     value.indexInParent = index
 
-                # TODO Look into this
-                # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
-                # # replaced by a native Python type, insert a collection _Reference instead of the raw
-                # # object which will be resolved later in read_stream() using a "collection resolver"
-                # if getattr(obj.__class__, '_is_system_class', False):
-                #     for collection_name, resolver in self._collection_resolvers:
-                #         if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
-                #             obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
-                #             self._collection_references.append(obj)
-                #             break
-
             obj[index] = value
             index += 1
 
-        self.objectsByID[obj._id] = obj
+        # If this object is a .NET collection (e.g. a Generic dict or list) which can be
+        # replaced by a native Python type, insert a collection _Reference instead of the raw
+        # object which will be resolved later in read() using a "collection resolver"
+        if getattr(obj.__class__, '_isSystemClass', False):
+            for name, resolver in self._collectionResolvers:
+                if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % name):
+                    obj = Reference(objectID, collectionResolver=resolver, originalObj=obj)
+                    self._collectionReferences.append(obj)
+                    break
+
+        self.objectsByID[objectID] = obj
 
         # Use libraryID to append the class to that binary library
         # This is particularly useful when saving the items again so that you save all of a binary library at once
         if libraryID:
-            self.binaryLibraries[libraryID].objects[obj._id] = obj
+            self.binaryLibraries[libraryID].objects[objectID] = obj
 
         return obj
 
-    def _readObjectArray(self, length):
+    def _readObjectArray(self, length, objectID):
         array = [None] * length
 
         index = 0
@@ -649,20 +675,84 @@ class NRBF:
                 value.parent = array
                 value.indexInParent = index
 
-            # TODO Look into this
-            # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
-            # # replaced by a native Python type, insert a collection _Reference instead of the raw
-            # # object which will be resolved later in read_stream() using a "collection resolver"
-            # if getattr(obj.__class__, '_is_system_class', False):
-            #     for collection_name, resolver in self._collection_resolvers:
-            #         if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
-            #             obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
-            #             self._collection_references.append(obj)
-            #             break
+            # Save the object by ID
+            self.objectsByID[objectID] = array
 
             array[index] = value
             index += 1
 
         return array
+
+    # endregion
+
+    # region Resolve references functions
+
+    # Convert a _Reference representing a MemberReference into its referenced object
+    def _resolveSimpleReference(self, reference):
+        if reference.resolved:
+            return
+
+        replacement = self.objectsByID[reference._id]
+        reference.parent[reference.indexInParent] = replacement
+
+        # Not sure when this would happen, doesn't hurt though!
+        reference.resolved = True
+
+    # Convert a _Reference representing a .NET dictionary collection into a Python dict
+    def _resolveDictReference(self, reference):
+        originalObj = reference.originalObj
+
+        # If the key-value pairs of the dict are itself a Reference, then resolve those first
+        if isinstance(originalObj.KeyValuePairs, Reference):
+            self._resolveSimpleReference(originalObj.KeyValuePairs)
+
+        replacement = {}
+
+        for item in originalObj.KeyValuePairs:
+            try:
+                # If any key is a _Reference, it must be resolved first
+                # (value _References will be resolved later)
+                if isinstance(item.key, Reference):
+                    self._resolveSimpleReference(item.key)
+
+                assert item.key not in replacement
+                replacement[item.key] = item.value
+            except (AssertionError, TypeError):
+                # Not all .NET dictionaries can be converted to Python dicts
+                # If the conversion fails, just proceed w/ the original object
+                replacement = originalObj
+                break
+        else:
+            # Assuming that the for loop completed successfully, indicating that all
+            # of the dictionary objects were converted,
+            # Then we need to fix the dictionary values for References
+            for key, value in replacement.items():
+                if isinstance(value, Reference):
+                    value.parent = replacement
+                    value.index_in_parent = key
+
+        return replacement
+
+    # Convert a Reference representing a .NET list collection into a Python list
+    def _resolveListReference(self, reference):
+        originalObj = reference.originalObj
+
+        # If the components of the list are itself a Reference, then resolve those first
+        if isinstance(originalObj.items, Reference):
+            self._resolveSimpleReference(originalObj.items)
+
+        replacement = originalObj.items
+
+        # Update parent for all replacement elements if they are references
+        for element in replacement:
+            if isinstance(element, Reference):
+                element.parent = replacement
+
+        return replacement
+
+    _collectionResolvers = (
+        ('Dictionary', _resolveDictReference),
+        ('List', _resolveListReference)
+    )
 
     # endregion

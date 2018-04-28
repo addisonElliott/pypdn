@@ -149,10 +149,6 @@ class _NameChecker(object):
             raise ValueError('Encountered duplicate field name: '
                              '{0!r}'.format(name))
 
-        if name.startswith('_'):
-            raise ValueError('Field names cannot start with an underscore: '
-                             '{0!r}'.format(name))
-
 
 ########################################################################
 # Returns a function with name 'name', that calls another function 'chain_fn'
@@ -277,10 +273,7 @@ def _circular_ref_repr(self):
     # Note: This function is hard-coded to print out the id if there is a circular reference
     # This is specific to NRBF class that will contain the object id for each item
     if self._ref_count != 0:
-        if hasattr(self, 'id'):
-            return '{0}(id={1})'.format(self.__class__.__name__, self.id)
-        else:
-            return '{0}(_id={1})'.format(self.__class__.__name__, self._id)
+        return '{0}(_id={1})'.format(self.__class__.__name__, self._id)
     else:
         self._ref_count += 1
         str = '{0}({1})'.format(self.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(self, name))
