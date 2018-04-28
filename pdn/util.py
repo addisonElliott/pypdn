@@ -95,5 +95,4 @@ BinaryLibrary = namedlist('BinaryLibrary', ['id', 'name', 'objects'], default=No
 # TODO See about adding more fields to this for resolving!
 Reference = namedlist('Reference', ['id'], default=None)
 MessageEnd = namedlist('MessageEnd', [])
-
 ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')

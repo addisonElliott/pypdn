@@ -273,7 +273,7 @@ def _fields_and_defaults(typename, field_names, default, rename):
 # Common member functions for the generated classes.
 
 
-def _repr(self):
+def _circular_ref_repr(self):
     # Note: This function is hard-coded to print out the id if there is a circular reference
     # This is specific to NRBF class that will contain the object id for each item
     if self._ref_count != 0:
@@ -287,6 +287,11 @@ def _repr(self):
                                                                    for name in self._fields))
         self._ref_count = 0
         return str
+
+
+def _repr(self):
+    return '{0}({1})'.format(self.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(self, name))
+                                                                for name in self._fields))
 
 
 def _asdict(self, asString=False):
@@ -309,8 +314,8 @@ def _asdict(self, asString=False):
 
 
 # Set up methods and fields shared by namedlist and namedtuple
-def _common_fields(fields, docstr):
-    type_dict = {'__repr__': _repr,
+def _common_fields(fields, docstr, check_circular=False):
+    type_dict = {'__repr__': _circular_ref_repr if check_circular else _repr,
                  '__dict__': property(_asdict),
                  '__doc__': docstr,
                  '_asdict': _asdict,
@@ -441,7 +446,7 @@ def namedlist(typename, field_names, default=NO_DEFAULT, rename=False,
                  'index': _nl_index,
                  '_update': _nl_update,
                  '_replace': _nl_replace}
-    type_dict.update(_common_fields(fields, _build_docstring(typename, fields, defaults)))
+    type_dict.update(_common_fields(fields, _build_docstring(typename, fields, defaults), check_circular=True))
 
     if use_slots:
         type_dict['__slots__'] = fields + ('_ref_count',)
@@ -508,7 +513,7 @@ def namedtuple(typename, field_names, default=NO_DEFAULT, rename=False):
                  '_replace': _nt_replace,
                  '_make': classmethod(_nt_make),
                  '__slots__': ()}
-    type_dict.update(_common_fields(fields, _build_docstring(typename, fields, defaults)))
+    type_dict.update(_common_fields(fields, _build_docstring(typename, fields, defaults), check_circular=False))
 
     # Create each field property.
     for idx, field in enumerate(fields):

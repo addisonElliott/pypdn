@@ -242,48 +242,52 @@ class NRBF:
     # region Primitive Array reader functions
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Boolean)
-    def _readBoolArray(self, length=1):
+    def _readBoolArray(self, length):
         return struct.unpack('<{0}?'.format(length), self.stream.read(length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Byte)
-    def _readByteArray(self, length=1):
+    def _readByteArray(self, length):
         return struct.unpack('<{0}B'.format(length), self.stream.read(length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Double)
-    def _readDoubleArray(self, length=1):
+    def _readDoubleArray(self, length):
         return struct.unpack('<{0}d'.format(length), self.stream.read(8 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int16)
-    def _readInt16Array(self, length=1):
+    def _readInt16Array(self, length):
         return struct.unpack('<{0}h'.format(length), self.stream.read(2 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int32)
-    def _readInt32Array(self, length=1):
+    def _readInt32Array(self, length):
         return struct.unpack('<{0}i'.format(length), self.stream.read(4 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Int64)
-    def _readInt64Array(self, length=1):
+    def _readInt64Array(self, length):
         return struct.unpack('<{0}q'.format(length), self.stream.read(8 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.SByte)
-    def _readSByteArray(self, length=1):
+    def _readSByteArray(self, length):
         return struct.unpack('<{0}b'.format(length), self.stream.read(length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.Single)
-    def _readSingleArray(self, length=1):
+    def _readSingleArray(self, length):
         return struct.unpack('<{0}f'.format(length), self.stream.read(4 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt16)
-    def _readUInt16Array(self, length=1):
+    def _readUInt16Array(self, length):
         return struct.unpack('<{0}H'.format(length), self.stream.read(2 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt32)
-    def _readUInt32Array(self, length=1):
+    def _readUInt32Array(self, length):
         return struct.unpack('<{0}I'.format(length), self.stream.read(4 * length))
 
     @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.UInt64)
-    def _readUInt64Array(self, length=1):
+    def _readUInt64Array(self, length):
         return struct.unpack('<{0}Q'.format(length), self.stream.read(8 * length))
+
+    @_registerReader(_PrimitiveTypeArrayReaders, PrimitiveType.String)
+    def _readStringArray(self, length):
+        return [self._readString() for i in range(length)]
 
     # endregion
 
@@ -374,6 +378,25 @@ class NRBF:
 
         return self._readClassMembers(cls())
 
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryObjectString)
+    def _readBinaryObjectString(self):
+        objectID = self._readInt32()
+        string = self._readString()
+        self.objectsByID[objectID] = string
+
+        print('BinaryObjectString', string)
+
+        return string
+
+    @_registerReader(_RecordTypeReaders, RecordType.MemberPrimitiveTyped)
+    def _readMemberPrimitiveTyped(self):
+        primitiveType = self._readInt32()
+        value = self._PrimitiveTypeReaders[primitiveType](self)
+
+        print('MemberPrimitiveTyped', value)
+
+        return value
+
     # This might not be able to use _read_members_into() since BinaryArrays are much more complex than
     # other types, thus it has no choice but to reimplement much of what _read_members_into() does
     @_registerReader(_RecordTypeReaders, RecordType.BinaryArray)
@@ -441,6 +464,16 @@ class NRBF:
         print('BinaryLibrary', libraryID, libraryName)
         return library
 
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNullMultiple256)
+    def _readObjectNullMultiple256(self):
+        # Count
+        return ObjectNullMultiple(self._readByte())
+
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNullMultiple)
+    def _readObjectNullMultiple(self):
+        # Count
+        return ObjectNullMultiple(self._readInt32())
+
     @_registerReader(_RecordTypeReaders, RecordType.ArraySinglePrimitive)
     def _readArraySinglePrimitive(self):
         objectID, length = self._readArrayInfo()
@@ -450,6 +483,29 @@ class NRBF:
         self.objectsByID[objectID] = array
 
         print('ArraySinglePrimitive', array)
+
+        return array
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleObject)
+    def _read_ArraySingleObject(self):
+        objectID, length = self._readArrayInfo()
+
+        array = self._readObjectArray(length)
+        self.objectsByID[objectID] = array
+
+        print('ArraySingleObject', objectID, array)
+
+        return array
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleString)
+    def _readArraySingleString(self):
+        objectID, length = self._readArrayInfo()
+        primitiveType = PrimitiveType.String
+
+        array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
+        self.objectsByID[objectID] = array
+
+        print('ArraySingleString', array)
 
         return array
 
