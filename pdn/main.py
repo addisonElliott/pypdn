@@ -15,8 +15,8 @@ from pdn.namedlist import namedlist
 # Save those to a new file and check that they are exactly the same.
 
 # filename = 'D:/Users/addis/Desktop/Untitled.pdn'
-# filename = '../tests/data/imageRawNRBF'
-filename = '../tests/data/arraysSerialized'
+filename = '../tests/data/imageRawNRBF'
+# filename = '../tests/data/arraysSerialized'
 # filename = 'D:/Users/addis/Desktop/Untitled4.pdn'
 # filename = 'D:/Users/addis/Desktop/Untitled2.pdn'
 # filename = 'D:/Users/addis/Desktop/Untitled3.pdn'
@@ -26,6 +26,7 @@ with open(filename, 'rb') as fh:
     root = x.getRoot()
 
     print('Test')
+    x.unresolveReferences()
     json_encoder = pdn.util.JSONEncoder(indent=4)
     print(json_encoder.encode(x))
 

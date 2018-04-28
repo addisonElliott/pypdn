@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-import pdn.CircularJSONEncoder
+import json
 import re
 from collections import OrderedDict
 from decimal import Decimal
@@ -107,7 +107,7 @@ ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')
 
 # Custom JSONEncoder to convert NRBF class or any of the subclasses into JSON
 # This class DOES handle circular references, something that is common in the .NET world
-class JSONEncoder(pdn.CircularJSONEncoder.JSONEncoder):
+class JSONEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, pdn.nrbf2.NRBF):
             d = OrderedDict(SerializationHeader={'rootID': o.rootID, 'headerID': o.headerID,

@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta, timezone
 import struct
-from decimal import Decimal
+from datetime import timezone
 from functools import reduce
 
 from pdn.util import *
@@ -53,6 +52,7 @@ class NRBF:
         self.stream = None
         self.rootID = None
         self.headerID = None
+        self.referencesResolved = None
 
         # Dictionary of binary libraries with their linked objects
         self.binaryLibraries = {}
@@ -104,6 +104,25 @@ class NRBF:
             pass
 
         # Resolve all the collection references
+        self.resolveReferences()
+
+        # Once we are done reading, we set the stream to None because it will not be used
+        self.stream = None
+
+    def write(self, stream=None, filename=None):
+        if stream is None and filename is not None:
+            stream = open(filename, 'wb')
+
+        assert stream.writable()
+        assert stream.seekable()
+
+    def getRoot(self):
+        assert self.rootID is not None
+
+        return self.objectsByID[self.rootID]
+
+    def resolveReferences(self):
+        # Resolve all the collection references
         for reference in self._collectionReferences:
             # Calls one of the resolvers
             replacement = reference.collectionResolver(self, reference)
@@ -122,33 +141,35 @@ class NRBF:
             self._resolveSimpleReference(reference)
         self._memberReferences.clear()
 
-        # Once we are done reading, we set the stream to None because it will not be used
-        self.stream = None
+        self.referencesResolved = True
 
-    def write(self, stream=None, filename=None):
-        if stream is None and filename is not None:
-            stream = open(filename, 'wb')
+    def unresolveReferences(self):
+        # Loop through all of the objects
+        for _, object in self.objectsByID.items():
+            # Attempt to iterate through the object
+            # If it doesnt work, then move on to the next item because there wont need to be any
+            # references.
+            # Otherwise, if any of the items have an object ID, create a reference
+            try:
+                for index, item in enumerate(object):
+                    if hasattr(item, '_id'):
+                        # TODO I need to add back to resolvedReferences thing, but I would like to get rid of that anyway!
+                        object[index] = Reference(item._id, object, index)
+            except TypeError:
+                pass
 
-        assert stream.writable()
-        assert stream.seekable()
+        self.referencesResolved = False
 
-    def getRoot(self):
-        assert self.rootID is not None
+    def toJSON(self, resolveReferences=True, **kwargs):
+        # Resolve or unresolve the references based on what the user desires
+        # and the current state
+        if resolveReferences and not self.referencesResolved:
+            self.resolveReferences()
+        elif not resolveReferences and self.referencesResolved:
+            self.unresolveReferences()
 
-        return self.objectsByID[self.rootID]
-
-    def toJSON(self, resolveReferences=True):
-        # If rr = True, then just use a regular encoder
-
-        # Otherwise, make sure to deresolve the references
-        # Loop through each class and find classes that basically have an
-        # object ID and reference through that!
-
-        # This same process will be done for writing the file back too
-        # My only concern is that I don't know the best way to deepcopy or handle the data?
-        # I'm hoping that'll work but we will see.
-
-        pass
+        jsonEncoder = JSONEncoder(**kwargs)
+        return jsonEncoder.encode(self)
 
     # region Primitive reader functions
 
