@@ -385,8 +385,6 @@ class NRBF:
         self.headerID = self._readInt32()
         majorVersion, minorVersion = self._readInt32(), self._readInt32()
 
-        print('SerializationHeader', self.rootID, self.headerID)
-
         if majorVersion != 1 or minorVersion != 0:
             raise NRBFError('Major and minor version for serialization header is incorrect: {0} {1}'.format(
                 majorVersion, minorVersion))
@@ -401,9 +399,6 @@ class NRBF:
         metadataID = self._readInt32()
         cls = self.classByID[metadataID]
 
-        # TODO Remove prints!
-        print('ClassWithId', cls, cls._typeInfo)
-
         # Only instance where the objectID does NOT equal the class ID is here!
         return self._readClassMembers(cls(), objectID)
 
@@ -411,8 +406,6 @@ class NRBF:
     def _readSystemClassWithMembers(self):
         cls = self._readClassInfo(isSystemClass=True)
         cls._typeInfo = None
-
-        print('SystemClassWithMembers', cls, cls._typeInfo)
 
         return self._readClassMembers(cls(), cls._id)
 
@@ -422,16 +415,12 @@ class NRBF:
         cls._typeInfo = None
         libraryID = self._readInt32()
 
-        print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
-
         return self._readClassMembers(cls(), cls._id, libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
     def _readSystemClassWithMembersAndTypes(self):
         cls = self._readClassInfo(isSystemClass=True)
         self._readMemberTypeInfo(cls)
-
-        print('SystemClassWithMembersAndTypes', cls, cls._typeInfo)
 
         return self._readClassMembers(cls(), cls._id)
 
@@ -441,8 +430,6 @@ class NRBF:
         self._readMemberTypeInfo(cls)
         libraryID = self._readInt32()
 
-        print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
-
         return self._readClassMembers(cls(), cls._id, libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.BinaryObjectString)
@@ -451,16 +438,12 @@ class NRBF:
         string = self._readString()
         self.objectsByID[objectID] = string
 
-        print('BinaryObjectString', string)
-
         return string
 
     @_registerReader(_RecordTypeReaders, RecordType.MemberPrimitiveTyped)
     def _readMemberPrimitiveTyped(self):
         primitiveType = self._readInt32()
         value = self._PrimitiveTypeReaders[primitiveType](self)
-
-        print('MemberPrimitiveTyped', value)
 
         return value
 
@@ -499,8 +482,6 @@ class NRBF:
         # But we just overwrite it regardless
         self.objectsByID[objectID] = array
 
-        print('BinaryArray', objectID, arrayType, rank, lengths, binaryType, additionalInfo, array)
-
         return array
 
     # When object's with an object ID are encountered above, they are added to the _objectsByID dictionary.
@@ -510,10 +491,7 @@ class NRBF:
     def _readMemberReference(self):
         # objectID
         ref = Reference(self._readInt32())
-
         self._memberReferences.append(ref)
-
-        print('MemberReference', ref._id)
 
         return ref
 
@@ -528,7 +506,6 @@ class NRBF:
         library = BinaryLibrary(libraryID, libraryName, {})
         self.binaryLibraries[libraryID] = library
 
-        print('BinaryLibrary', libraryID, libraryName)
         return library
 
     @_registerReader(_RecordTypeReaders, RecordType.ObjectNullMultiple256)
@@ -549,8 +526,6 @@ class NRBF:
         array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
         self.objectsByID[objectID] = array
 
-        print('ArraySinglePrimitive', array)
-
         return array
 
     @_registerReader(_RecordTypeReaders, RecordType.ArraySingleObject)
@@ -558,8 +533,6 @@ class NRBF:
         objectID, length = self._readArrayInfo()
 
         array = self._readObjectArray(length, objectID)
-
-        print('ArraySingleObject', objectID, array)
 
         return array
 
@@ -570,8 +543,6 @@ class NRBF:
 
         array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
         self.objectsByID[objectID] = array
-
-        print('ArraySingleString', array)
 
         return array
 
