@@ -436,16 +436,7 @@ def _make_iterencode(markers, _default, _encoder, _indent, _floatstr,
         elif isinstance(o, dict):
             yield from _iterencode_dict(o, _current_indent_level)
         else:
-            if markers is not None:
-                markerid = id(o)
-                if markerid in markers:
-                    raise ValueError("Circular reference detected")
-                markers[markerid] = o
-
             oNew = _default(o)
             yield from _iterencode(oNew, _current_indent_level)
             _afterItem(o)
-
-            if markers is not None:
-                del markers[markerid]
     return _iterencode

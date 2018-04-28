@@ -100,7 +100,7 @@ def convert1DArrayND(array1d, dims, index=[0]):
 
 BinaryLibrary = namedlist('BinaryLibrary', ['id', 'name', 'objects'], default=None)
 # TODO See about adding more fields to this for resolving!
-Reference = namedlist('Reference', ['id'], default=None)
+Reference = namedlist('Reference', ['id', 'parent', 'indexInParent'], default=None)
 MessageEnd = namedlist('MessageEnd', [])
 ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')
 
@@ -123,6 +123,10 @@ class JSONEncoder(pdn.CircularJSONEncoder.JSONEncoder):
             d['Objects'] = o.objectsByID
 
             return d
+        elif isinstance(o, Reference):
+            # We have to handle the reference specially because there is the parent field that will
+            # cause circular dependencies
+            return OrderedDict(_class_name=o.__class__.__name__, id=o.id)
         elif hasattr(o, '_asdict'):
             if o._ref_count != 0:
                 return 'Circular ref'

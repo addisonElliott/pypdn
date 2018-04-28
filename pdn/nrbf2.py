@@ -116,6 +116,19 @@ class NRBF:
 
         return self.objectsByID[self.rootID]
 
+    def toJSON(self, resolveReferences=True):
+        # If rr = True, then just use a regular encoder
+
+        # Otherwise, make sure to deresolve the references
+        # Loop through each class and find classes that basically have an
+        # object ID and reference through that!
+
+        # This same process will be done for writing the file back too
+        # My only concern is that I don't know the best way to deepcopy or handle the data?
+        # I'm hoping that'll work but we will see.
+
+        pass
+
     # region Primitive reader functions
 
     @_registerReader(_PrimitiveTypeReaders, PrimitiveType.Boolean, _PrimitiveTypeStructs, '?')
@@ -591,10 +604,8 @@ class NRBF:
                     index += value.count
                     continue
                 elif isinstance(value, Reference):
-                    # TODO Decide if this is necessary
-                    # value.parent = obj
-                    # value.indexInParent = index
-                    pass
+                    value.parent = obj
+                    value.indexInParent = index
 
                 # TODO Look into this
                 # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
@@ -635,10 +646,8 @@ class NRBF:
                 index += value.count
                 continue
             elif isinstance(value, Reference):
-                # TODO Decide if this is necessary
-                # value.parent = obj
-                # value.indexInParent = index
-                pass
+                value.parent = array
+                value.indexInParent = index
 
             # TODO Look into this
             # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
