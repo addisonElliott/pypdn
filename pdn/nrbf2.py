@@ -328,28 +328,41 @@ class NRBF:
 
         return self._readClassMembers(cls())
 
-    @_registerReader(_RecordTypeReaders, RecordType.BinaryLibrary)
-    def _readBinaryLibrary(self):
-        libraryID = self._readInt32()
-        libraryName = self._readString()
-        library = BinaryLibrary(libraryID, libraryName, {})
-        self.binaryLibraries[libraryID] = library
+    @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembers)
+    def _readSystemClassWithMembers(self):
+        cls = self._readClassInfo(isSystemClass=True)
 
-        print('BinaryLibrary', libraryID, libraryName)
-        return library
+        print('SystemClassWithMembers', cls, cls._typeInfo)
+
+        return self._readClassMembers(cls())
+
+    @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembers)
+    def _readClassWithMembers(self):
+        cls = self._readClassInfo(isSystemClass=False)
+        cls._typeInfo = None
+        libraryID = self._readInt32()
+
+        # Use libraryID to append the class to that binary library
+        # This is particularly useful when saving the items again so that you save all of a binary library at once
+        self.binaryLibraries[libraryID].objects[cls._id] = cls
+
+        print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
+
+        return self._readClassMembers(cls())
 
     @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
     def _readSystemClassWithMembersAndTypes(self):
         cls = self._readClassInfo(isSystemClass=True)
+        cls._typeInfo = None
         self._readMemberTypeInfo(cls)
 
-        print('ClassWithMembersAndTypes', cls, cls._typeInfo)
+        print('SystemClassWithMembersAndTypes', cls, cls._typeInfo)
 
         return self._readClassMembers(cls())
 
     @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembersAndTypes)
     def _readClassWithMembersAndTypes(self):
-        cls = self._readClassInfo(isSystemClass=True)
+        cls = self._readClassInfo(isSystemClass=False)
         self._readMemberTypeInfo(cls)
         libraryID = self._readInt32()
 
@@ -418,6 +431,16 @@ class NRBF:
     def _readMessageEnd(self):
         return MessageEnd()
 
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryLibrary)
+    def _readBinaryLibrary(self):
+        libraryID = self._readInt32()
+        libraryName = self._readString()
+        library = BinaryLibrary(libraryID, libraryName, {})
+        self.binaryLibraries[libraryID] = library
+
+        print('BinaryLibrary', libraryID, libraryName)
+        return library
+
     @_registerReader(_RecordTypeReaders, RecordType.ArraySinglePrimitive)
     def _readArraySinglePrimitive(self):
         objectID, length = self._readArrayInfo()
@@ -469,7 +492,14 @@ class NRBF:
     def _readClassMembers(self, obj):
         index = 0
         while index < len(obj._fields):
-            binaryType, additionalInfo = obj._typeInfo[index]
+            # If typeinfo is not defined, as is the case for ClassWithMembers and SystemClassWithMembers,
+            # then assume it is an object that can be read
+            # Not sure if this is a safe assumption because Microsoft isn't entirely clear when the member type
+            # information is 'unnecessary'
+            if obj._typeInfo is None:
+                binaryType, additionalInfo = BinaryType.Object, None
+            else:
+                binaryType, additionalInfo = obj._typeInfo[index]
 
             if binaryType == BinaryType.Primitive:
                 value = self._readPrimitive(additionalInfo)
@@ -496,41 +526,5 @@ class NRBF:
             index += 1
 
         return array
-
-    def _read_members_into(self, obj, object_id, members_primitive_type):
-        assert callable(
-            members_primitive_type)  # when called with the member_num, returns any respective primitive type
-        if self._add_overwrite_info:
-            # create the object which will store the overwrite info for all the members in obj
-            overwrite_info = [None] * len(obj) if isinstance(obj, list) else obj.__class__()
-        else:
-            overwrite_info = None
-        member_num = 0
-        while member_num < len(obj):
-            primitive_type = members_primitive_type(member_num)
-            val = self._read_Record_or_Primitive(primitive_type, overwrite_info, member_num)
-            if isinstance(val, self._BinaryLibrary):  # a BinaryLibrary can precede the actual member, it's ignored
-                val = self._read_Record_or_Primitive(primitive_type, overwrite_info, member_num)
-            if isinstance(val, self._ObjectNullMultiple):  # represents one or more empty members
-                member_num += val.count
-                continue
-            if isinstance(val, self._Reference):  # see _read_MemberReference()
-                val.parent = obj
-                val.index_in_parent = member_num
-            obj[member_num] = val
-            member_num += 1
-        if overwrite_info is not None:
-            self._overwrite_info_by_pyid[id(obj)] = overwrite_info
-        # If this object is a .NET collection (e.g. a Generic dict or list) which can be
-        # replaced by a native Python type, insert a collection _Reference instead of the raw
-        # object which will be resolved later in read_stream() using a "collection resolver"
-        if getattr(obj.__class__, '_is_system_class', False):
-            for collection_name, resolver in self._collection_resolvers:
-                if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
-                    obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
-                    self._collection_references.append(obj)
-                    break
-        self._objects_by_id[object_id] = obj
-        return obj
 
     # endregion
