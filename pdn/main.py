@@ -3,6 +3,7 @@
 
 from pdn import nrbf
 from pdn import nrbf2
+import pdn
 import json
 from pdn.namedlist import namedlist
 
@@ -22,6 +23,11 @@ filename = '../tests/data/imageRawNRBF'
 
 with open(filename, 'rb') as fh:
     x = nrbf2.NRBF(fh)
+    root = x.getRoot()
+
+    print('')
+    json_encoder = pdn.util.JSONEncoder(indent=4)
+    print(json_encoder.encode(root))
 
 # with open(filename, 'rb') as fh:
 #     serial = nrbf.Serialization(fh)

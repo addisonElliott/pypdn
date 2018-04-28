@@ -1,6 +1,11 @@
-from enum import IntEnum
+from datetime import datetime, timedelta
+import json
 import re
+from collections import OrderedDict
+from decimal import Decimal
+from enum import IntEnum
 from keyword import iskeyword
+
 from pdn.namedlist import namedlist, namedtuple
 
 
@@ -91,8 +96,29 @@ def convert1DArrayND(array1d, dims, index=[0]):
     else:
         return [convert1DArrayND(array1d, dims[1:], index) for x in range(dims[0])]
 
+
 BinaryLibrary = namedlist('BinaryLibrary', ['id', 'name', 'objects'], default=None)
 # TODO See about adding more fields to this for resolving!
 Reference = namedlist('Reference', ['id'], default=None)
 MessageEnd = namedlist('MessageEnd', [])
 ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')
+
+
+# Custom JSONEncoder to convert NRBF class or any of the subclasses into JSON
+# This class DOES handle circular references, something that is common in the .NET world
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if hasattr(o, '_asdict'):
+            if o._ref_count != 0:
+                return 'Circular ref'
+            else:
+                o._ref_count += 1
+                d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
+                d.update(o._asdict())
+                return d
+        elif isinstance(o, (datetime, timedelta)):
+            return str(o)
+        elif isinstance(o, Decimal):
+            return repr(o)
+
+        return super().default(o)

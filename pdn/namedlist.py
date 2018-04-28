@@ -294,7 +294,7 @@ def _repr(self):
                                                                 for name in self._fields))
 
 
-def _asdict(self, asString=False):
+def _circular_asdict(self, asString=False):
     # In 2.6, return a dict.
     # Otherwise, return an OrderedDict
     t = _OrderedDict if _OrderedDict is not None else dict
@@ -313,12 +313,23 @@ def _asdict(self, asString=False):
         return t(zip(self._fields, self))
 
 
+def _asdict(self, asString=False):
+    # In 2.6, return a dict.
+    # Otherwise, return an OrderedDict
+    t = _OrderedDict if _OrderedDict is not None else dict
+
+    if asString:
+        return repr(t(zip(self._fields, self)))
+    else:
+        return t(zip(self._fields, self))
+
+
 # Set up methods and fields shared by namedlist and namedtuple
 def _common_fields(fields, docstr, check_circular=False):
     type_dict = {'__repr__': _circular_ref_repr if check_circular else _repr,
                  '__dict__': property(_asdict),
                  '__doc__': docstr,
-                 '_asdict': _asdict,
+                 '_asdict': _circular_asdict if check_circular else _asdict,
                  '_fields': fields}
 
     # See collections.namedtuple for a description of

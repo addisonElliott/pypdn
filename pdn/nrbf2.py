@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timedelta, timezone
 import struct
 from decimal import Decimal
 from functools import reduce
@@ -6,8 +6,9 @@ from functools import reduce
 from pdn.util import *
 
 
-# TODO Include note about inspiration for this
-# Include link to the GitHub page
+# This library was inspired from the following code:
+#   https://github.com/gurnec/Undo_FFG/blob/master/nrbf.py
+# Thanks to Christopher Gurnee!
 
 # TODO Do documentation and docstrings for this
 
@@ -42,7 +43,6 @@ class NRBF:
     # speed up parsing the number
     _PrimitiveTypeStructs = {}
 
-    # TODO Might remove this
     # Dictionary contains stuff for reading primitive arrays
     _PrimitiveTypeArrayReaders = {}
 
@@ -53,8 +53,16 @@ class NRBF:
         self.stream = None
         self.rootID = None
         self.headerID = None
+
+        # TODO Do I want this?
+        # self._collection_references = []  # all seen collection references, e.g. .NET dicts and lists
+
+        # Dictionary of binary libraries with their linked objects
         self.binaryLibraries = {}
-        self.classByID = {}
+
+        # Keep track of class and objects by their ID
+        # TODO Ensure that having two separate dictionaries is NOT worth it
+        # self.classByID = {}
         self.objectsByID = {}
 
         # Keeps track of references so that after reading is done, the references can be resolved
@@ -72,9 +80,8 @@ class NRBF:
         assert stream.readable()
 
         if self.stream is not None:
-            raise NRBFError('Class is already reading from a stream! Please close that before trying again')
             # Means we are in the middle of reading or writing data, throw exception probably
-            pass
+            raise NRBFError('Class is already reading from a stream! Please close the stream before trying again')
 
         if self.rootID is not None:
             self.rootID = None
@@ -83,11 +90,16 @@ class NRBF:
 
         self.stream = stream
 
-        # TODO Make sure that the header was loaded correctly
+        # Read header
+        self._readRecord()
+        if self.rootID is None:
+            raise NRBFError('Invalid stream, unable to read header. File may be corrupted')
 
         # Keep reading records until we receive a MessageEnd record
         while not isinstance(self._readRecord(), MessageEnd):
             pass
+
+        # TODO Resolve references and collections stuff
 
         # Once we are done reading, we set the stream to None because it will not be used
         self.stream = None
@@ -99,13 +111,10 @@ class NRBF:
         assert stream.writable()
         assert stream.seekable()
 
-    def _readRecord(self):
-        recordType = self._readByte()
+    def getRoot(self):
+        assert self.rootID is not None
 
-        return self._RecordTypeReaders[recordType](self)
-
-    def _readPrimitive(self, primitiveType):
-        return self._PrimitiveTypeReaders[primitiveType](self)
+        return self.objectsByID[self.rootID]
 
     # region Primitive reader functions
 
@@ -162,7 +171,7 @@ class NRBF:
     def _readTimeSpan(self):
         # 64-bit integer that represents time span in increments of 100 nanoseconds
         # Divide by 10 to get into microseconds
-        return datetime.timedelta(microseconds=self._readInt64() / 10)
+        return timedelta(microseconds=self._readInt64() / 10)
 
     @_registerReader(_PrimitiveTypeReaders, PrimitiveType.DateTime)
     def _readDateTime(self):
@@ -177,18 +186,18 @@ class NRBF:
             ticks -= 1 << 62
 
         # Create a datetime that starts at the beginning and then increment it by the number of microseconds
-        time = datetime.datetime(1, 1, 1)
+        time = datetime(1, 1, 1)
         try:
-            time += datetime.timedelta(microseconds=ticks / 10)
+            time += timedelta(microseconds=ticks / 10)
         except OverflowError:
             pass
 
         # Update datetime object to have the appropriate timezone
         # If kind is 1, then this is UTC and if kind is 2, then this is local timezone
         if kind == 1:
-            time = time.replace(tzinfo=datetime.timezone.utc)
+            time = time.replace(tzinfo=timezone.utc)
         elif kind == 2:
-            LOCAL_TIMEZONE = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+            LOCAL_TIMEZONE = datetime.now(timezone.utc).astimezone().tzinfo
             time = time.replace(tzinfo=LOCAL_TIMEZONE)  # kind 2 is the local time zone
 
         return time
@@ -298,13 +307,22 @@ class NRBF:
     # The ClassTypeInfo structure is read and ignored
     @_registerReader(_AdditionalInfoReaders, BinaryType.Class)
     def _readClassTypeInfo(self):
-        # TODO handle this better
-        self._readString()
-        self._readInt32()
+        name = self._readString()
+        libraryID = self._readInt32()
+
+        return (name, libraryID)
 
     # endregion
 
     # region Record reader functions
+
+    def _readRecord(self):
+        recordType = self._readByte()
+
+        return self._RecordTypeReaders[recordType](self)
+
+    def _readPrimitive(self, primitiveType):
+        return self._PrimitiveTypeReaders[primitiveType](self)
 
     @_registerReader(_RecordTypeReaders, RecordType.SerializedStreamHeader)
     def _readSerializationHeaderRecord(self):
@@ -326,7 +344,8 @@ class NRBF:
     def _readClassWithId(self):
         objectID = self._readInt32()
         metadataID = self._readInt32()
-        cls = self.classByID[metadataID]
+        # cls = self.classByID[metadataID]
+        cls = self.objectsByID[metadataID]
 
         print('ClassWithId', cls, cls._typeInfo)
 
@@ -509,6 +528,14 @@ class NRBF:
 
         return array
 
+    @_registerReader(_RecordTypeReaders, RecordType.MethodCall)
+    def _read_MethodCall(self):
+        raise NotImplementedError('MethodCall')
+
+    @_registerReader(_RecordTypeReaders, RecordType.MethodReturn)
+    def _read_MethodReturn(self):
+        raise NotImplementedError('MethodReturn')
+
     # endregion
 
     # region Read helper classes
@@ -530,7 +557,8 @@ class NRBF:
         cls = namedlist(sanitizeIdentifier(className), memberNames, default=None)
         cls._id = objectID
         cls._isSystemClass = isSystemClass
-        self.classByID[objectID] = cls
+        # self.classByID[objectID] = cls
+        self.objectsByID[objectID] = cls
 
         return cls
 
@@ -562,7 +590,30 @@ class NRBF:
             else:
                 value = self._readRecord()
 
-                # TODO Special stuff here
+                if isinstance(value, BinaryLibrary):
+                    # BinaryLibrary can precede the actual member
+                    # Continue on to the actual member
+                    continue
+                elif isinstance(value, ObjectNullMultiple):
+                    # Skip a given number of indices
+                    index += value.count
+                    continue
+                elif isinstance(value, Reference):
+                    # TODO Decide if this is necessary
+                    # value.parent = obj
+                    # value.indexInParent = index
+                    pass
+
+                # TODO Look into this
+                # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
+                # # replaced by a native Python type, insert a collection _Reference instead of the raw
+                # # object which will be resolved later in read_stream() using a "collection resolver"
+                # if getattr(obj.__class__, '_is_system_class', False):
+                #     for collection_name, resolver in self._collection_resolvers:
+                #         if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
+                #             obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
+                #             self._collection_references.append(obj)
+                #             break
 
             obj[index] = value
             index += 1
@@ -576,7 +627,30 @@ class NRBF:
         while index < length:
             value = self._readRecord()
 
-            # TODO Special stuff here
+            if isinstance(value, BinaryLibrary):
+                # BinaryLibrary can precede the actual member
+                # Continue on to the actual member
+                continue
+            elif isinstance(value, ObjectNullMultiple):
+                # Skip a given number of indices
+                index += value.count
+                continue
+            elif isinstance(value, Reference):
+                # TODO Decide if this is necessary
+                # value.parent = obj
+                # value.indexInParent = index
+                pass
+
+            # TODO Look into this
+            # # If this object is a .NET collection (e.g. a Generic dict or list) which can be
+            # # replaced by a native Python type, insert a collection _Reference instead of the raw
+            # # object which will be resolved later in read_stream() using a "collection resolver"
+            # if getattr(obj.__class__, '_is_system_class', False):
+            #     for collection_name, resolver in self._collection_resolvers:
+            #         if obj.__class__.__name__.startswith('System_Collections_Generic_%s_' % collection_name):
+            #             obj = self._Reference(object_id, collection_resolver=resolver, orig_obj=obj)
+            #             self._collection_references.append(obj)
+            #             break
 
             array[index] = value
             index += 1
