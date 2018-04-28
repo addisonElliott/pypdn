@@ -1,6 +1,7 @@
 from enum import IntEnum
 import re
 from keyword import iskeyword
+from pdn.namedlist import namedlist, namedtuple
 
 
 class RecordType(IntEnum):
@@ -57,6 +58,15 @@ class BinaryType(IntEnum):
     PrimitiveArray = 7
 
 
+class BinaryArrayType(IntEnum):
+    Single = 0
+    Jagged = 1
+    Rectangular = 2
+    SingleOffset = 3
+    JaggedOffset = 4
+    RectangularOffset = 5
+
+
 # Given an identifier string, sanitize the string such that it is suitable to pass to namedlist
 def sanitizeIdentifier(identifier):
     # Replace anything that is not an alphanumeric character or underscore with an underscore
@@ -68,3 +78,22 @@ def sanitizeIdentifier(identifier):
         identifier += '_'
 
     return identifier
+
+
+# Take a 1D array and convert it to a N-dimensional array with dimensions given by the arguments dims
+# This function uses recursion to accomplish the task so index must be a mutable list with one number inside of it
+# The element in the list will be the current index and will be incremented in the recursion
+def convert1DArrayND(array1d, dims, index=[0]):
+    if len(dims) == 1:
+        array = list(array1d[index[0]:index[0] + dims[0]])
+        index[0] += dims[0]
+        return array
+    else:
+        return [convert1DArrayND(array1d, dims[1:], index) for x in range(dims[0])]
+
+BinaryLibrary = namedlist('BinaryLibrary', ['id', 'name', 'objects'], default=None)
+# TODO See about adding more fields to this for resolving!
+Reference = namedlist('Reference', ['id'], default=None)
+MessageEnd = namedlist('MessageEnd', [])
+
+ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')

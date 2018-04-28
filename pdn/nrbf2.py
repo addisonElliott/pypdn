@@ -1,9 +1,9 @@
-import struct
 import datetime
+import struct
 from decimal import Decimal
+from functools import reduce
 
 from pdn.util import *
-from pdn.namedlist import namedlist
 
 
 # TODO Include note about inspiration for this
@@ -51,6 +51,14 @@ class NRBF:
 
     def __init__(self, stream=None, filename=None):
         self.stream = None
+        self.rootID = None
+        self.headerID = None
+        self.binaryLibraries = {}
+        self.classByID = {}
+        self.objectsByID = {}
+
+        # Keeps track of references so that after reading is done, the references can be resolved
+        self._memberReferences = []
 
         # If a stream or filename to be loaded is given, then call the read function
         # This makes the syntax cleaner to allow this creation of class and loading of data all in one line
@@ -61,25 +69,25 @@ class NRBF:
         if stream is None and filename is not None:
             stream = open(filename, 'rb')
 
-        # TODO Might want to assert seekable here!
         assert stream.readable()
 
         if self.stream is not None:
+            raise NRBFError('Class is already reading from a stream! Please close that before trying again')
             # Means we are in the middle of reading or writing data, throw exception probably
             pass
 
-        # TODO Check if this has already been loaded to reset stuff, maybe do by default anyway
+        if self.rootID is not None:
+            self.rootID = None
+            self.headerID = None
+            # TODO Check if this has already been loaded to reset stuff, maybe do by default anyway
 
         self.stream = stream
 
-        self._readRecord(stream)
-        self._readRecord(stream)
-        self._readRecord(stream)
         # TODO Make sure that the header was loaded correctly
-        # TODO Loop through and read each item
 
-        # while not isinstance(self._readRecord(stream), str):
-        #     pass
+        # Keep reading records until we receive a MessageEnd record
+        while not isinstance(self._readRecord(), MessageEnd):
+            pass
 
         # Once we are done reading, we set the stream to None because it will not be used
         self.stream = None
@@ -90,12 +98,14 @@ class NRBF:
 
         assert stream.writable()
         assert stream.seekable()
-        pass
 
-    def _readRecord(self, stream):
+    def _readRecord(self):
         recordType = self._readByte()
 
         return self._RecordTypeReaders[recordType](self)
+
+    def _readPrimitive(self, primitiveType):
+        return self._PrimitiveTypeReaders[primitiveType](self)
 
     # region Primitive reader functions
 
@@ -200,6 +210,7 @@ class NRBF:
     @_registerReader(_AdditionalInfoReaders, BinaryType.Object)
     @_registerReader(_AdditionalInfoReaders, BinaryType.ObjectArray)
     @_registerReader(_AdditionalInfoReaders, BinaryType.StringArray)
+    @_registerReader(_RecordTypeReaders, RecordType.ObjectNull)
     def _readNull(self):
         return None
 
@@ -276,7 +287,7 @@ class NRBF:
 
     # endregion
 
-    #region AdditionalInfo reader functions
+    # region AdditionalInfo reader functions
 
     # Note: Remaining reader functions are attached in other sections to existing functions
 
@@ -287,87 +298,204 @@ class NRBF:
         self._readString()
         self._readInt32()
 
-    #endregion
+    # endregion
 
     # region Record reader functions
 
     @_registerReader(_RecordTypeReaders, RecordType.SerializedStreamHeader)
     def _readSerializationHeaderRecord(self):
-        # TODO Save this data somehow, might use a class maybe?
-        rootID = self._readInt32()
-        headerID = self._readInt32()
+        self.rootID = self._readInt32()
+        self.headerID = self._readInt32()
         majorVersion, minorVersion = self._readInt32(), self._readInt32()
 
-        print('SerializationHeader', rootID, headerID, majorVersion, minorVersion)
+        print('SerializationHeader', self.rootID, self.headerID)
 
         if majorVersion != 1 or minorVersion != 0:
             raise NRBFError('Major and minor version for serialization header is incorrect: {0} {1}'.format(
                 majorVersion, minorVersion))
 
-        if rootID == 0:
+        if self.rootID == 0:
             raise NotImplementedError(
                 'Root ID is zero indicating that a BinaryMethodCall is available. Not implemented yet')
 
+    @_registerReader(_RecordTypeReaders, RecordType.ClassWithId)
+    def _readClassWithId(self):
+        objectID = self._readInt32()
+        metadataID = self._readInt32()
+        cls = self.classByID[metadataID]
+
+        print('ClassWithId', cls, cls._typeInfo)
+
+        return self._readClassMembers(cls())
+
     @_registerReader(_RecordTypeReaders, RecordType.BinaryLibrary)
     def _readBinaryLibrary(self):
-        # TODO What to do with this?
         libraryID = self._readInt32()
         libraryName = self._readString()
+        library = BinaryLibrary(libraryID, libraryName, {})
+        self.binaryLibraries[libraryID] = library
 
         print('BinaryLibrary', libraryID, libraryName)
+        return library
 
-        # return self._BinaryLibrary()
+    @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
+    def _readSystemClassWithMembersAndTypes(self):
+        cls = self._readClassInfo(isSystemClass=True)
+        self._readMemberTypeInfo(cls)
+
+        print('ClassWithMembersAndTypes', cls, cls._typeInfo)
+
+        return self._readClassMembers(cls())
 
     @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembersAndTypes)
     def _readClassWithMembersAndTypes(self):
-        cls = self._readClassInfo()
+        cls = self._readClassInfo(isSystemClass=True)
         self._readMemberTypeInfo(cls)
-        # TODO Handle library ID
         libraryID = self._readInt32()
 
-        print('ClassWithMembersAndTypes', cls, libraryID)
+        # Use libraryID to append the class to that binary library
+        # This is particularly useful when saving the items again so that you save all of a binary library at once
+        self.binaryLibraries[libraryID].objects[cls._id] = cls
 
-        # TODO Read members into?
-        self._readClassMembers(cls(), cls._id)
-        # return self._read_members_into(Class(), Class._id, Class._primitive_types.get)
+        print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
+
+        return self._readClassMembers(cls())
+
+    # This might not be able to use _read_members_into() since BinaryArrays are much more complex than
+    # other types, thus it has no choice but to reimplement much of what _read_members_into() does
+    @_registerReader(_RecordTypeReaders, RecordType.BinaryArray)
+    def _readBinaryArray(self):
+        objectID = self._readInt32()
+        arrayType = self._readByte()
+        rank = self._readInt32()
+        lengths = [self._readInt32() for i in range(rank)]
+
+        # The lower bounds are ignored currently
+        # Not sure of the implications or purpose of this
+        if arrayType in [BinaryArrayType.SingleOffset, BinaryArrayType.JaggedOffset, BinaryArrayType.RectangularOffset]:
+            lowerBounds = [self._readInt32() for i in range(rank)]
+
+        binaryType = self._readByte()
+        additionalInfo = self._AdditionalInfoReaders[binaryType](self)
+
+        # Get total length of items that we need to read
+        # This is just the product of all the elements in the lengths array
+        length = reduce(lambda x, y: x * y, lengths)
+
+        # If the items are primitives, use primitive array readers
+        # Otherwise, the items will be objects and should be read by reading records
+        if binaryType == BinaryType.Primitive:
+            array = self._PrimitiveTypeArrayReaders[additionalInfo](self, length)
+        else:
+            array = self._readObjectArray(length)
+
+        # For a multidimensional array, take the 1D array that was read and convert it to ND
+        if arrayType in [BinaryArrayType.Rectangular, BinaryArrayType.RectangularOffset]:
+            array = convert1DArrayND(array, lengths)
+
+        # Save the object by ID
+        self.objectsByID[objectID] = array
+
+        print('BinaryArray', objectID, arrayType, rank, lengths, binaryType, additionalInfo, array)
+
+        return array
+
+    # When object's with an object ID are encountered above, they are added to the _objectsByID dictionary.
+    # A MemberReference object contains the object ID that the reference refers to. These references are
+    # resolved at the end.
+    @_registerReader(_RecordTypeReaders, RecordType.MemberReference)
+    def _readMemberReference(self):
+        # objectID
+        ref = Reference(self._readInt32())
+
+        self._memberReferences.append(ref)
+
+        print('MemberReference', ref.id)
+
+        return ref
+
+    @_registerReader(_RecordTypeReaders, RecordType.MessageEnd)
+    def _readMessageEnd(self):
+        return MessageEnd()
+
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySinglePrimitive)
+    def _readArraySinglePrimitive(self):
+        objectID, length = self._readArrayInfo()
+        primitiveType = self._readByte()
+
+        array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
+        self.objectsByID[objectID] = array
+
+        print('ArraySinglePrimitive', array)
+
+        return array
+
+    # endregion
+
+    # region Read helper classes
+
+    def _readArrayInfo(self):
+        # objectID and array length
+        return (self._readInt32(), self._readInt32())
 
     # Reads a ClassInfo structure and creates and saves a new namedlist object with the same member and ClassInfo
     # specifics
-    def _readClassInfo(self):
+    def _readClassInfo(self, isSystemClass=False):
         objectID = self._readInt32()
         className = self._readString()
         memberCount = self._readInt32()
         memberNames = [sanitizeIdentifier(self._readString()) for i in range(memberCount)]
 
+        # Create namedlist that will act as the class
+        # Set object ID for the class and save it by the object ID for later
         cls = namedlist(sanitizeIdentifier(className), memberNames, default=None)
         cls._id = objectID
-        # TODO Are these necessary?
-        cls._primitiveTypes = {}
-        cls._isSystemClass = False
-        # TODO How do I want to save this
-        # self._Class_by_id[object_id] = Class
+        cls._isSystemClass = isSystemClass
+        self.classByID[objectID] = cls
 
         return cls
 
     def _readMemberTypeInfo(self, cls):
         binaryTypes = [self._readByte() for member in cls._fields]
+        additionalInfo = [self._AdditionalInfoReaders[type](self) for type in binaryTypes]
 
-        for index, type in enumerate(binaryTypes):
-            additionalInfo = self._AdditionalInfoReaders[type](self)
-
-            # TODO Stuff here
-
-        cls._types = zip(binaryTypes, additionalInfo)
+        # Combine the binary types and additional info into one tuple
+        # This gets saved to the class object because it will be used to set the members
+        # Also, if there is a ClassWithId object then it won't have type information but only
+        # the class ID so we will need to retain this information.
+        cls._typeInfo = tuple(zip(binaryTypes, additionalInfo))
 
     # Reads members or array elements into the 'obj' pre-allocated list or class instance
-    def _readClassMembers(self, obj, objectID, membersPrimitiveType):
+    def _readClassMembers(self, obj):
+        index = 0
+        while index < len(obj._fields):
+            binaryType, additionalInfo = obj._typeInfo[index]
 
-        for index in range(obj._fields):
-            # if primitive, readPrimitive, otherwise readRecord
+            if binaryType == BinaryType.Primitive:
+                value = self._readPrimitive(additionalInfo)
+            else:
+                value = self._readRecord()
 
-            pass
+                # TODO Special stuff here
 
-        pass
+            obj[index] = value
+            index += 1
+
+        return obj
+
+    def _readObjectArray(self, length):
+        array = [None] * length
+
+        index = 0
+        while index < length:
+            value = self._readRecord()
+
+            # TODO Special stuff here
+
+            array[index] = value
+            index += 1
+
+        return array
 
     def _read_members_into(self, obj, object_id, members_primitive_type):
         assert callable(

@@ -277,7 +277,10 @@ def _repr(self):
     # Note: This function is hard-coded to print out the id if there is a circular reference
     # This is specific to NRBF class that will contain the object id for each item
     if self._ref_count != 0:
-        return '{0}(id={1})'.format(self.__class__.__name__, self.id)
+        if hasattr(self, 'id'):
+            return '{0}(id={1})'.format(self.__class__.__name__, self.id)
+        else:
+            return '{0}(_id={1})'.format(self.__class__.__name__, self._id)
     else:
         self._ref_count += 1
         str = '{0}({1})'.format(self.__class__.__name__, ', '.join('{0}={1!r}'.format(name, getattr(self, name))
