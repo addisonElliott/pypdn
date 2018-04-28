@@ -27,7 +27,7 @@ with open(filename, 'rb') as fh:
 
     print('')
     json_encoder = pdn.util.JSONEncoder(indent=4)
-    print(json_encoder.encode(root))
+    print(json_encoder.encode(x))
 
 # with open(filename, 'rb') as fh:
 #     serial = nrbf.Serialization(fh)

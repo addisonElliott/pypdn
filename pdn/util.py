@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
-import json
+import pdn.CircularJSONEncoder
 import re
 from collections import OrderedDict
 from decimal import Decimal
 from enum import IntEnum
 from keyword import iskeyword
+import pdn.nrbf2
 
 from pdn.namedlist import namedlist, namedtuple
 
@@ -106,14 +107,30 @@ ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')
 
 # Custom JSONEncoder to convert NRBF class or any of the subclasses into JSON
 # This class DOES handle circular references, something that is common in the .NET world
-class JSONEncoder(json.JSONEncoder):
+class JSONEncoder(pdn.CircularJSONEncoder.JSONEncoder):
     def default(self, o):
-        if hasattr(o, '_asdict'):
+        if isinstance(o, pdn.nrbf2.NRBF):
+            d = OrderedDict(SerializationHeader={'rootID': o.rootID, 'headerID': o.headerID,
+                                                 'majorVersion': 1, 'minorVersion': 0})
+
+            # Attach root
+            d['Root'] = o.getRoot()
+
+            # Add all binary libraries
+            d['BinaryLibraries'] = o.binaryLibraries
+
+            # Attach classes and objects by ID
+            d['Objects'] = o.objectsByID
+
+            return d
+        elif hasattr(o, '_asdict'):
             if o._ref_count != 0:
                 return 'Circular ref'
             else:
                 o._ref_count += 1
                 d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
+                if hasattr(o, '_id'):
+                    d['_id'] = o._id
                 d.update(o._asdict())
                 return d
         elif isinstance(o, (datetime, timedelta)):
@@ -122,3 +139,8 @@ class JSONEncoder(json.JSONEncoder):
             return repr(o)
 
         return super().default(o)
+
+    def afterItem(self, o):
+        # pass
+        if hasattr(o, '_asdict'):
+            o._ref_count = 0

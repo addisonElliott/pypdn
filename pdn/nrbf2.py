@@ -62,7 +62,7 @@ class NRBF:
 
         # Keep track of class and objects by their ID
         # TODO Ensure that having two separate dictionaries is NOT worth it
-        # self.classByID = {}
+        self.classByID = {}
         self.objectsByID = {}
 
         # Keeps track of references so that after reading is done, the references can be resolved
@@ -344,8 +344,7 @@ class NRBF:
     def _readClassWithId(self):
         objectID = self._readInt32()
         metadataID = self._readInt32()
-        # cls = self.classByID[metadataID]
-        cls = self.objectsByID[metadataID]
+        cls = self.classByID[metadataID]
 
         print('ClassWithId', cls, cls._typeInfo)
 
@@ -365,13 +364,9 @@ class NRBF:
         cls._typeInfo = None
         libraryID = self._readInt32()
 
-        # Use libraryID to append the class to that binary library
-        # This is particularly useful when saving the items again so that you save all of a binary library at once
-        self.binaryLibraries[libraryID].objects[cls._id] = cls
-
         print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
 
-        return self._readClassMembers(cls())
+        return self._readClassMembers(cls(), libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.SystemClassWithMembersAndTypes)
     def _readSystemClassWithMembersAndTypes(self):
@@ -381,7 +376,8 @@ class NRBF:
 
         print('SystemClassWithMembersAndTypes', cls, cls._typeInfo)
 
-        return self._readClassMembers(cls())
+        x = cls()
+        return self._readClassMembers(x)
 
     @_registerReader(_RecordTypeReaders, RecordType.ClassWithMembersAndTypes)
     def _readClassWithMembersAndTypes(self):
@@ -389,13 +385,10 @@ class NRBF:
         self._readMemberTypeInfo(cls)
         libraryID = self._readInt32()
 
-        # Use libraryID to append the class to that binary library
-        # This is particularly useful when saving the items again so that you save all of a binary library at once
-        self.binaryLibraries[libraryID].objects[cls._id] = cls
-
         print('ClassWithMembersAndTypes', cls, cls._typeInfo, libraryID)
 
-        return self._readClassMembers(cls())
+        x = cls()
+        return self._readClassMembers(x, libraryID)
 
     @_registerReader(_RecordTypeReaders, RecordType.BinaryObjectString)
     def _readBinaryObjectString(self):
@@ -557,8 +550,7 @@ class NRBF:
         cls = namedlist(sanitizeIdentifier(className), memberNames, default=None)
         cls._id = objectID
         cls._isSystemClass = isSystemClass
-        # self.classByID[objectID] = cls
-        self.objectsByID[objectID] = cls
+        self.classByID[objectID] = cls
 
         return cls
 
@@ -573,7 +565,7 @@ class NRBF:
         cls._typeInfo = tuple(zip(binaryTypes, additionalInfo))
 
     # Reads members or array elements into the 'obj' pre-allocated list or class instance
-    def _readClassMembers(self, obj):
+    def _readClassMembers(self, obj, libraryID=None):
         index = 0
         while index < len(obj._fields):
             # If typeinfo is not defined, as is the case for ClassWithMembers and SystemClassWithMembers,
@@ -617,6 +609,13 @@ class NRBF:
 
             obj[index] = value
             index += 1
+
+        self.objectsByID[obj._id] = obj
+
+        # Use libraryID to append the class to that binary library
+        # This is particularly useful when saving the items again so that you save all of a binary library at once
+        if libraryID:
+            self.binaryLibraries[libraryID].objects[obj._id] = obj
 
         return obj
 
