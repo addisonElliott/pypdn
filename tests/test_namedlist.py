@@ -53,14 +53,14 @@ class TestNamedlist(unittest.TestCase):
                                   "d=None), parent=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), y=Y(_id=2), "
                                   "z=Z(_id=3)), c={'this i': 12}))")
 
-        self.assertEquals(repr(w), "W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
+        self.assertEqual(repr(w), "W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
                                    "parent=X(_id=1), y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4))), "
                                    "d=None), y=Y(_id=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), "
                                    "parent=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), y=Y(_id=2), "
                                    "z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), "
                                    "d=None), w=W(_id=4))), c={'this i': 12})")
 
-        self.assertEquals(repr(v), "V(_id=5, a=1, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
+        self.assertEqual(repr(v), "V(_id=5, a=1, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
                                    "parent=X(_id=1), y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4, "
                                    "a=1, b=2, x=X(_id=1), y=Y(_id=2), c={'this i': 12}))), d=None), y=Y(_id=2, "
                                    "x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), parent=X(_id=1, a=10, "
@@ -110,14 +110,14 @@ class TestNamedlist(unittest.TestCase):
                                   "d=None), parent=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), y=Y(_id=2), "
                                   "z=Z(_id=3)), c={'this i': 12}))")
 
-        self.assertEquals(repr(w), "W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
+        self.assertEqual(repr(w), "W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
                                    "parent=X(_id=1), y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4))), "
                                    "d=None), y=Y(_id=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), "
                                    "parent=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), y=Y(_id=2), "
                                    "z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), "
                                    "d=None), w=W(_id=4))), c={'this i': 12})")
 
-        self.assertEquals(repr(v), "V(_id=5, a=1, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
+        self.assertEqual(repr(v), "V(_id=5, a=1, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
                                    "parent=X(_id=1), y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4, "
                                    "a=1, b=2, x=X(_id=1), y=Y(_id=2), c={'this i': 12}))), d=None), y=Y(_id=2, "
                                    "x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), parent=X(_id=1, a=10, "
@@ -149,19 +149,19 @@ class TestNamedlist(unittest.TestCase):
         self.assertEqual(w._ref_count, 0)
         self.assertEqual(v._ref_count, 0)
 
-        self.assertEquals(x._asdict(asString=True), "OrderedDict([('_id', 1), ('a', 10), ('b', 'test'), ('c', 32.0), "
+        self.assertEqual(x._asdict(asString=True), "OrderedDict([('_id', 1), ('a', 10), ('b', 'test'), ('c', 32.0), "
                                                     "('y', Y(_id=2, x=X(_id=1), parent=X(_id=1), y=Y(_id=2), "
                                                     "z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4, a=1, b=2, "
                                                     "x=X(_id=1), y=Y(_id=2), c={'this i': 12})))), ('d', None)])")
 
-        self.assertEquals(y._asdict(asString=True), "OrderedDict([('_id', 2), ('x', X(_id=1, a=10, b='test', c=32.0, "
+        self.assertEqual(y._asdict(asString=True), "OrderedDict([('_id', 2), ('x', X(_id=1, a=10, b='test', c=32.0, "
                                                     "y=Y(_id=2), d=None)), ('parent', X(_id=1, a=10, b='test', c=32.0, "
                                                     "y=Y(_id=2), d=None)), ('y', Y(_id=2)), ('z', Z(_id=3, a=1, b=2, "
                                                     "c='3', x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), d=None), "
                                                     "w=W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, "
                                                     "y=Y(_id=2), d=None), y=Y(_id=2), c={'this i': 12})))])")
 
-        self.assertEquals(z._asdict(asString=True), "OrderedDict([('_id', 3), ('a', 1), ('b', 2), ('c', '3'), ('x', "
+        self.assertEqual(z._asdict(asString=True), "OrderedDict([('_id', 3), ('a', 1), ('b', 2), ('c', '3'), ('x', "
                                                     "X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), "
                                                     "parent=X(_id=1), y=Y(_id=2), z=Z(_id=3)), d=None)), ('w', "
                                                     "W(_id=4, a=1, b=2, x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, "
@@ -170,7 +170,7 @@ class TestNamedlist(unittest.TestCase):
                                                     "d=None), parent=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), "
                                                     "d=None), y=Y(_id=2), z=Z(_id=3)), c={'this i': 12}))])")
 
-        self.assertEquals(w._asdict(asString=True), "OrderedDict([('_id', 4), ('a', 1), ('b', 2), ('x', X(_id=1, a=10, "
+        self.assertEqual(w._asdict(asString=True), "OrderedDict([('_id', 4), ('a', 1), ('b', 2), ('x', X(_id=1, a=10, "
                                                     "b='test', c=32.0, y=Y(_id=2, x=X(_id=1), parent=X(_id=1), "
                                                     "y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), "
                                                     "w=W(_id=4))), d=None)), ('y', Y(_id=2, x=X(_id=1, a=10, "
@@ -179,7 +179,7 @@ class TestNamedlist(unittest.TestCase):
                                                     "a=1, b=2, c='3', x=X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2), "
                                                     "d=None), w=W(_id=4)))), ('c', {'this i': 12})])")
 
-        self.assertEquals(v._asdict(asString=True), "OrderedDict([('_id', 5), ('a', 1), ('x', X(_id=1, a=10, b='test', "
+        self.assertEqual(v._asdict(asString=True), "OrderedDict([('_id', 5), ('a', 1), ('x', X(_id=1, a=10, b='test', "
                                                     "c=32.0, y=Y(_id=2, x=X(_id=1), parent=X(_id=1), y=Y(_id=2), "
                                                     "z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4, a=1, b=2, "
                                                     "x=X(_id=1), y=Y(_id=2), c={'this i': 12}))), d=None)), ('y', "
