@@ -76,6 +76,8 @@ class LayeredImage:
                 # Take current image and apply the normalized image from the layer to it with specified blend mode
                 image = applyBlending(image, normalizedImage, blendMode)
 
+        # Paint.NET stores everything as uint8's
+        # We had to convert to float to flatten the image and now we can convert back to uint8 if desired
         if asByte:
             image = skimage.img_as_ubyte(image)
 
@@ -219,9 +221,9 @@ def blendingFunc(A, B, blendType):
     if blendType == BlendType.Normal:
         return B
     elif blendType == BlendType.Multiply:
-        pass
+        return A * B
     elif blendType == BlendType.Additive:
-        pass
+        return np.minimum(A + B, 1.0)
     elif blendType == BlendType.ColorBurn:
         pass
     elif blendType == BlendType.ColorDodge:
