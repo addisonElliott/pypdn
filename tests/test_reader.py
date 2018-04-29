@@ -3,14 +3,11 @@ import sys
 import unittest
 
 import imageio
-import numpy as np
 
 from pdn.reader import *
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
-# TODO Write reader unit tests
 
 class TestReader(unittest.TestCase):
     def setUp(self):
