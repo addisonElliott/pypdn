@@ -230,13 +230,17 @@ def blendingFunc(A, B, blendType):
     elif blendType == BlendType.Additive:
         return np.minimum(A + B, 1.0)
     elif blendType == BlendType.ColorBurn:
-        return np.where(B != 0.0, np.maximum(1.0 - ((1.0 - A) / B), 0.0), 0.0)
+        with np.errstate(divide='ignore'):
+            return np.where(B != 0.0, np.maximum(1.0 - ((1.0 - A) / B), 0.0), 0.0)
     elif blendType == BlendType.ColorDodge:
-        return np.where(B != 1.0, np.minimum(A / (1.0 - B), 1.0), 1.0)
+        with np.errstate(divide='ignore'):
+            return np.where(B != 1.0, np.minimum(A / (1.0 - B), 1.0), 1.0)
     elif blendType == BlendType.Reflect:
-        return np.where(B != 1.0, np.minimum((A ** 2) / (1.0 - B), 1.0), 1.0)
+        with np.errstate(divide='ignore'):
+            return np.where(B != 1.0, np.minimum((A ** 2) / (1.0 - B), 1.0), 1.0)
     elif blendType == BlendType.Glow:
-        return np.where(A != 1.0, np.minimum((B ** 2) / (1.0 - A), 1.0), 1.0)
+        with np.errstate(divide='ignore'):
+            return np.where(A != 1.0, np.minimum((B ** 2) / (1.0 - A), 1.0), 1.0)
     elif blendType == BlendType.Overlay:
         return np.where(A < 0.5, 2 * A * B, 1.0 - (2 * (1.0 - A) * (1.0 - B)))
     elif blendType == BlendType.Difference:
