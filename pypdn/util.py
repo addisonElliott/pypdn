@@ -5,9 +5,9 @@ from collections import OrderedDict
 from decimal import Decimal
 from enum import IntEnum
 from keyword import iskeyword
-import pdn.nrbf
+import pypdn.nrbf
 
-from pdn.namedlist import namedlist, namedtuple
+from pypdn.namedlist import namedlist, namedtuple
 
 
 class RecordType(IntEnum):
@@ -109,7 +109,7 @@ ObjectNullMultiple = namedtuple('ObjectNullMultiple', 'count')
 # This class DOES handle circular references, something that is common in the .NET world
 class JSONEncoder(json.JSONEncoder):
     def default(self, o):
-        if isinstance(o, pdn.nrbf.NRBF):
+        if isinstance(o, pypdn.nrbf.NRBF):
             d = OrderedDict(SerializationHeader={'rootID': o.rootID, 'headerID': o.headerID,
                                                  'majorVersion': 1, 'minorVersion': 0})
 

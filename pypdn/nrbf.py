@@ -2,7 +2,7 @@ import struct
 from datetime import timezone
 from functools import reduce
 
-from pdn.util import *
+from pypdn.util import *
 
 
 # This library was inspired from the following code:

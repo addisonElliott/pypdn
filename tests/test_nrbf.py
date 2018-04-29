@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from pdn.nrbf import NRBF
+from pypdn.nrbf import NRBF
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

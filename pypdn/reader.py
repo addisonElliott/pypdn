@@ -5,7 +5,7 @@ import numpy as np
 import skimage
 from aenum import IntEnum
 
-from pdn.nrbf import NRBF
+from pypdn.nrbf import NRBF
 
 
 # TODO Add API for writing PDN file
@@ -44,7 +44,7 @@ class LayeredImage:
         self.layers = []
 
     def __repr__(self):
-        return 'pdn.LayeredImage(width={0}, height={1}, version={2!r}, layers={3!r})'.format(self.width, self.height,
+        return 'pypdn.LayeredImage(width={0}, height={1}, version={2!r}, layers={3!r})'.format(self.width, self.height,
                                                                                              self.version, self.layers)
 
     def flatten(self, useAll=False, applyBlendMode=True, asByte=False):
@@ -95,7 +95,7 @@ class Layer:
         self.image = image
 
     def __repr__(self):
-        return 'pdn.Layer(name={0}, visible={1}, isBackground={2}, opacity={3}, blendMode={4!r})' \
+        return 'pypdn.Layer(name={0}, visible={1}, isBackground={2}, opacity={3}, blendMode={4!r})' \
             .format(self.name, self.visible, self.isBackground, self.opacity, self.blendMode)
 
 

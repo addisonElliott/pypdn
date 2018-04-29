@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from pdn.namedlist import namedlist
+from pypdn.namedlist import namedlist
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

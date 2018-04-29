@@ -4,7 +4,7 @@ import unittest
 
 import imageio
 
-from pdn.reader import *
+from pypdn.reader import *
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
