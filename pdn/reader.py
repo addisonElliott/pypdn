@@ -98,92 +98,93 @@ def read(filename):
 
         try:
             layeredImage = LayeredImage(pdnDocument.width, pdnDocument.height, pdnDocument.savedWith)
+
+            # Cannot loop through items array because sometimes it is padded with null objects, size is right though
+            for index in range(pdnDocument.layers.ArrayList__size):
+                bitmapLayer = pdnDocument.layers.ArrayList__items[index]
+                layerProps = bitmapLayer.Layer_properties
+
+                # Read information from layer that is used to read the image data
+                assert bitmapLayer.Layer_width == layeredImage.width
+                assert bitmapLayer.Layer_height == layeredImage.height
+                stride = bitmapLayer.surface.stride
+                length = bitmapLayer.surface.scan0.length64
+
+                # Begin reading the image data from the layer
+                # Look here for a reference of how it is written:
+                # https://github.com/rivy/OpenPDN/blob/cca476b0df2a2f70996e6b9486ec45327631568c/src/Core/MemoryBlock.cs
+
+                # Empty array of the length, will be filled in later
+                data = bytearray([0] * length)
+
+                # Format version of the data, 0 = GZIP compressed, 1 = uncompressed
+                formatVersion = struct.unpack('>B', fh.read(1))[0]
+                # Size of each chunk in the destination (buffer where we store data)
+                chunkSize = struct.unpack('>I', fh.read(4))[0]
+
+                # Get total number of chunks which is total length divided by chunkSize
+                # Keep track of the chunks found in case the file is corrupted
+                chunkCount = np.ceil(length / chunkSize).astype(np.uint32)
+                chunksFound = [False] * chunkCount
+
+                for x in range(chunkCount):
+                    # Read the chunk number, they are not necessarily in order
+                    chunkNumber = struct.unpack('>I', fh.read(4))[0]
+
+                    if chunkNumber >= chunkCount:
+                        raise PDNReaderError(
+                            'Chunk number read from stream is out of bounds: %i %i. File may be corrupted'
+                            % (chunkNumber, chunkCount))
+
+                    if chunksFound[chunkNumber]:
+                        raise PDNReaderError(
+                            'Chunk number %i was already encountered. File may be corrupted' % chunkNumber)
+
+                    # Read the size of the data from memory
+                    # This is not necessary the same size as chunkSize if the data is compressed
+                    dataSize = struct.unpack('>I', fh.read(4))[0]
+
+                    # Calculate the chunk offset
+                    chunkOffset = chunkNumber * chunkSize
+
+                    # Mark this chunk as found
+                    chunksFound[chunkNumber] = True
+
+                    # The chunk size is a maximum value and should be limited for the last chunk where it might not be
+                    # exactly equal to the chunk size
+                    actualChunkSize = np.min((chunkSize, length - chunkOffset))
+
+                    # Read the chunk data
+                    rawData = fh.read(dataSize)
+
+                    if formatVersion == 0:
+                        decompressedData = gzip.decompress(rawData)
+                        data[chunkOffset:chunkOffset + actualChunkSize] = decompressedData
+                    else:
+                        data[chunkOffset:chunkOffset + actualChunkSize] = rawData
+
+                # With the data read in as one large 1D array, we now format the data properly
+                # Calculate the bits per pixel
+                bpp = stride * 8 / layeredImage.width
+
+                # Convert 1D array to image array
+                if bpp == 32:
+                    image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 4))
+                    image[:, :, 0:3] = np.flip(image[:, :, 0:3], axis=-1)
+                elif bpp == 24:
+                    image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 3))
+                    image[:, :, 0:2] = np.flip(image[:, :, 0:2], axis=-1)
+                else:
+                    raise PDNReaderError('Invalid bpp %i' % bpp)
+
+                # Setup layer with information and append to the layers list
+                layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
+                              BlendType(layerProps.blendMode.value__), image)
+                layeredImage.layers.append(layer)
+
+            return layeredImage
         except (AttributeError):
             raise PDNReaderError('Unable to read fields in NRBF PDN file')
-
-        # TODO Check for field here with exception try/catch maybe
-        # Cannot loop through items array because sometimes it is padded with null objects, size is right though
-        for index in range(pdnDocument.layers.ArrayList__size):
-            bitmapLayer = pdnDocument.layers.ArrayList__items[index]
-            layerProps = bitmapLayer.Layer_properties
-
-            # Read information from layer that is used to read the image data
-            assert bitmapLayer.Layer_width == layeredImage.width
-            assert bitmapLayer.Layer_height == layeredImage.height
-            stride = bitmapLayer.surface.stride
-            length = bitmapLayer.surface.scan0.length64
-
-            # Begin reading the image data from the layer
-            # Look here for a reference of how it is written:
-            # https://github.com/rivy/OpenPDN/blob/cca476b0df2a2f70996e6b9486ec45327631568c/src/Core/MemoryBlock.cs
-
-            # Empty array of the length, will be filled in later
-            data = bytearray([0] * length)
-
-            # Format version of the data, 0 = GZIP compressed, 1 = uncompressed
-            formatVersion = struct.unpack('>B', fh.read(1))[0]
-            # Size of each chunk in the destination (buffer where we store data)
-            chunkSize = struct.unpack('>I', fh.read(4))[0]
-
-            # Get total number of chunks which is total length divided by chunkSize
-            # Keep track of the chunks found in case the file is corrupted
-            chunkCount = np.ceil(length / chunkSize).astype(np.uint32)
-            chunksFound = [False] * chunkCount
-
-            for x in range(chunkCount):
-                # Read the chunk number, they are not necessarily in order
-                chunkNumber = struct.unpack('>I', fh.read(4))[0]
-
-                if chunkNumber >= chunkCount:
-                    raise PDNReaderError('Chunk number read from stream is out of bounds: %i %i. File may be corrupted'
-                                         % (chunkNumber, chunkCount))
-
-                if chunksFound[chunkNumber]:
-                    raise PDNReaderError('Chunk number %i was already encountered. File may be corrupted' % chunkNumber)
-
-                # Read the size of the data from memory
-                # This is not necessary the same size as chunkSize if the data is compressed
-                dataSize = struct.unpack('>I', fh.read(4))[0]
-
-                # Calculate the chunk offset
-                chunkOffset = chunkNumber * chunkSize
-
-                # Mark this chunk as found
-                chunksFound[chunkNumber] = True
-
-                # The chunk size is a maximum value and should be limited for the last chunk where it might not be
-                # exactly equal to the chunk size
-                actualChunkSize = np.min((chunkSize, length - chunkOffset))
-
-                # Read the chunk data
-                rawData = fh.read(dataSize)
-
-                if formatVersion == 0:
-                    decompressedData = gzip.decompress(rawData)
-                    data[chunkOffset:chunkOffset + actualChunkSize] = decompressedData
-                else:
-                    data[chunkOffset:chunkOffset + actualChunkSize] = rawData
-
-            # With the data read in as one large 1D array, we now format the data properly
-            # Calculate the bits per pixel
-            bpp = stride * 8 / layeredImage.width
-
-            # Convert 1D array to image array
-            if bpp == 32:
-                image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 4))
-                image[:, :, 0:3] = np.flip(image[:, :, 0:3], axis=-1)
-            elif bpp == 24:
-                image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 3))
-                image[:, :, 0:2] = np.flip(image[:, :, 0:2], axis=-1)
-            else:
-                raise PDNReaderError('Invalid bpp %i' % bpp)
-
-            # Setup layer with information and append to the layers list
-            layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
-                          BlendType(layerProps.blendMode.value__), image)
-            layeredImage.layers.append(layer)
-
-    return layeredImage
 
 
 filename = '../tests/data/Untitled2.pdn'
