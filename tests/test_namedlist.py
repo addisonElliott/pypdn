@@ -21,9 +21,6 @@ class TestNamedlist(unittest.TestCase):
         self.Wwos = namedlist('W', ['id', 'a', 'b', 'x', 'y', 'c'], use_slots=False)
         self.Vwos = namedlist('V', ['id', 'a', 'x', 'y', 'z', 'b', 'c'], use_slots=False)
 
-        # Output is good for repr()
-        # Now I might want to get asdict working right? It may already be good
-
     def test_repr_basic(self):
         x = self.X(1, 10, 'test', 32.0, None, None)
         y = self.Y(2, x, x, None, None)
@@ -206,5 +203,6 @@ class TestNamedlist(unittest.TestCase):
                                                     "y=Y(id=2), z=Z(id=3)), c={'this i': 12}))), "
                                                     "('b', 100), ('c', 200)])")
 
-    if __name__ == '__main__':
-        unittest.main()
+
+if __name__ == '__main__':
+    unittest.main()

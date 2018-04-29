@@ -7,194 +7,181 @@
 # pdn.write(xxx)
 
 import struct
-import nrbf
+from pdn.nrbf import NRBF
 import numpy as np
 import gzip
 import matplotlib.pyplot as plt
+from aenum import IntEnum
+
 
 class PDNReaderError(Exception):
     """Exceptions for Paint.NET Reader module."""
     pass
 
-def _readStr(fh, numBytes, encoding='ascii'):
-    rawData = fh.read(numBytes)
-    if len(rawData) != numBytes:
-        raise PDNReaderError('Cannot read %d bytes to decode string. File may be corrupted.' % numBytes)
 
-    return rawData.decode(encoding)
+class BlendType(IntEnum):
+    Normal = 0
+    Multiply = 1
+    Additive = 2
+    ColorBurn = 3
+    ColorDodge = 4
+    Reflect = 5
+    Glow = 6
+    Overlay = 7
+    Difference = 8
+    Negation = 9
+    Lighten = 10
+    Darken = 11
+    Screen = 12
+    XOR = 13
 
 
-# Open filename
-# Read magic str
-# Read header length
-# Read header
+class LayeredImage:
+    __slots__ = ['width', 'height', 'version', 'layers']
 
-with open(filename, 'rb') as fh:
-    # Read header section!
-    magicStr = _readStr(fh, 4)
-    print(magicStr)
-    if magicStr != 'PDN3':
-        raise PDNReaderError('Invalid magic string for PDN file: %s' % magicStr)
+    def __init__(self, width, height, version):
+        self.width = width
+        self.height = height
+        self.version = version
+        self.layers = []
 
-    headerSizeStr = fh.read(3) + b'\x00'
-    if len(headerSizeStr) != 4:
-        raise PDNReaderError('Unable to read header size. File may be corrupted.')
+    # TODO Define repr
 
-    headerSize = struct.unpack('<i', headerSizeStr)[0]
-    print(headerSize)
 
-    header = _readStr(fh, headerSize, 'utf-8')
-    print(header)
+class Layer:
+    __slots__ = ['name', 'visible', 'isBackground', 'opacity', 'blendMode', 'image']
 
-    # TODO Parse header eventually
+    def __init__(self, name, visible, isBackground, opacity, blendMode):
+        self.name = name
+        self.visible = visible
+        self.isBackground = isBackground
+        self.opacity = opacity
+        self.blendMode = blendMode
+        self.image = None
 
-    if fh.read(2) != b'\x00\x01':
-        raise PDNReaderError('Invalid data indicator bytes. File may be corrupted')
+    # TODO Define repr
 
-    print('')
-    print('')
 
-    # Read data now
-    #     data = deserializeDotNET(fh)
-    serial = nrbf.serialization(fh)
-    data = serial.read_stream()
+def read(filename):
+    with open(filename, 'rb') as fh:
+        # Begin by reading magic str and checking it
+        magicStr = fh.read(4).decode('ascii')
 
-    print(type(data))
-    print(len(data))
+        if magicStr != 'PDN3':
+            raise PDNReaderError('Invalid magic string for PDN file: %s' % magicStr)
 
-    for key in data:
-        print(type(key))
-    print('')
-    print('')
+        headerSizeStr = fh.read(3) + b'\x00'
+        if len(headerSizeStr) != 4:
+            raise PDNReaderError('Unable to read header size. File may be corrupted.')
 
-    print(type(serial))
-    print(serial.__dict__.keys())
+        # Read header size and the header
+        headerSize = struct.unpack('<i', headerSizeStr)[0]
+        header = fh.read(headerSize).decode('utf-8')
 
-    print('')
-    print('')
+        # Note: The header does not contain any relevant information that is not contained in the NRBF part itself
+        # Only section is the thumbnail image but that is not relevant here I do not believe
 
-    # Width/height & version
-    print(data.width)
-    print(data.height)
-    print(data.savedWith)
-    print(data.__dict__.keys())
-    print('')
-    print('')
+        if fh.read(2) != b'\x00\x01':
+            raise PDNReaderError('Invalid data indicator bytes. File may be corrupted')
 
-    print(type(data.layers))
-    print(data.layers.__dict__.keys())
-    print(len(data.layers))
-    print(data.layers.ArrayList__size)
-    print('')
-    print('')
+        nrbfData = NRBF(stream=fh)
+        pdnDocument = nrbfData.getRoot()
 
-    layers = data.layers.ArrayList__items
-    layer = layers[0]
-    print(type(layer))
-    print(layer.__dict__.keys())
-    print(layer.Layer_properties)
-    print('')
-    print('')
+        # print(nrbfData.toJSON(resolveReferences=False, indent=4))
 
-    surface = layer.surface
-    print(type(surface))
-    print(surface.__dict__.keys())
-    print(surface.width)
-    print(surface.height)
-    print(surface.stride)
-    print('')
-    print('')
+        try:
+            layeredImage = LayeredImage(pdnDocument.width, pdnDocument.height, pdnDocument.savedWith)
+        except (AttributeError):
+            raise PDNReaderError('Unable to read fields in NRBF PDN file')
 
-    scan = surface.scan0
-    print(type(scan))
-    print(scan.__dict__.keys())
-    print(scan.length64)
-    print(scan.hasParent)
-    print(scan.deferred)
-    print('')
-    print('')
+        # TODO Check for field here with exception try/catch maybe
+        for bitmapLayer in pdnDocument.layers.ArrayList__items:
+            layerProps = bitmapLayer.Layer_properties
 
-    print(fh.tell())
+            # Setup layer with basic parameters
+            layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
+                          BlendType(layerProps.blendMode.value__))
 
-    # Begin reading data now....
-    # Look here: https://github.com/rivy/OpenPDN/blob/cca476b0df2a2f70996e6b9486ec45327631568c/src/Core/MemoryBlock.cs
+            # Read information from layer that is used to read the image data
+            assert bitmapLayer.Layer_width == layeredImage.width
+            assert bitmapLayer.Layer_height == layeredImage.height
+            stride = bitmapLayer.surface.stride
+            length = bitmapLayer.surface.scan0.length64
 
-    data = bytearray([0] * scan.length64)
+            # Begin reading the image data from the layer
+            # Look here for a reference of how it is written:
+            # https://github.com/rivy/OpenPDN/blob/cca476b0df2a2f70996e6b9486ec45327631568c/src/Core/MemoryBlock.cs
 
-    # Format version of the data, 0 = GZIP compressed, 1 = uncompressed
-    formatVersion = struct.unpack('>B', fh.read(1))[0]
-    # Size of each chunk in the destination (buffer where we store data)
-    chunkSize = struct.unpack('>I', fh.read(4))[0]
+            # Empty array of the length, will be filled in later
+            data = bytearray([0] * length)
 
-    # Get total number of chunks which is total length divided by chunkSize
-    # Keep track of the chunks found in case the file is corrupted
-    chunkCount = np.ceil(scan.length64 / chunkSize).astype(np.uint32)
-    chunksFound = [False] * chunkCount
+            # Format version of the data, 0 = GZIP compressed, 1 = uncompressed
+            formatVersion = struct.unpack('>B', fh.read(1))[0]
+            # Size of each chunk in the destination (buffer where we store data)
+            chunkSize = struct.unpack('>I', fh.read(4))[0]
 
-    for x in range(chunkCount):
-        # Read the chunk number, they are not necessarily in order
-        chunkNumber = struct.unpack('>I', fh.read(4))[0]
+            # Get total number of chunks which is total length divided by chunkSize
+            # Keep track of the chunks found in case the file is corrupted
+            chunkCount = np.ceil(length / chunkSize).astype(np.uint32)
+            chunksFound = [False] * chunkCount
 
-        if chunkNumber >= chunkCount:
-            raise PDNReaderError('Chunk number read from stream is out of bounds: %i %i. File may be corrupted'
-                                 % (chunkNumber, chunkCount))
+            for x in range(chunkCount):
+                # Read the chunk number, they are not necessarily in order
+                chunkNumber = struct.unpack('>I', fh.read(4))[0]
 
-        if chunksFound[chunkNumber]:
-            raise PDNReaderError('Chunk number %i was already encountered. File may be corrupted' % chunkNumber)
+                if chunkNumber >= chunkCount:
+                    raise PDNReaderError('Chunk number read from stream is out of bounds: %i %i. File may be corrupted'
+                                         % (chunkNumber, chunkCount))
 
-        # Read the size of the data from memory
-        # This is not necessary the same size as chunkSize if the data is compressed
-        dataSize = struct.unpack('>I', fh.read(4))[0]
+                if chunksFound[chunkNumber]:
+                    raise PDNReaderError('Chunk number %i was already encountered. File may be corrupted' % chunkNumber)
 
-        # Calculate the chunk offset
-        chunkOffset = chunkNumber * chunkSize
+                # Read the size of the data from memory
+                # This is not necessary the same size as chunkSize if the data is compressed
+                dataSize = struct.unpack('>I', fh.read(4))[0]
 
-        # Mark this chunk as found
-        chunksFound[chunkNumber] = True
+                # Calculate the chunk offset
+                chunkOffset = chunkNumber * chunkSize
 
-        # The chunk size is a maximum value and should be limited for the last chunk where it might not be exactly equal
-        # to the chunk size
-        currentChunkSize = np.min((chunkSize, scan.length64 - chunkOffset))
+                # Mark this chunk as found
+                chunksFound[chunkNumber] = True
 
-        # Read the chunk data
-        rawData = fh.read(dataSize)
+                # The chunk size is a maximum value and should be limited for the last chunk where it might not be
+                # exactly equal to the chunk size
+                actualChunkSize = np.min((chunkSize, length - chunkOffset))
 
-        if formatVersion == 0:
-            decompressedData = gzip.decompress(rawData)
-            data[chunkOffset:chunkOffset + chunkSize] = decompressedData
-        else:
-            data[chunkOffset:chunkOffset + dataSize] = rawData
+                # Read the chunk data
+                rawData = fh.read(dataSize)
 
-        #         if (formatVersion == 0)
-        #         {
-        #             DecompressChunkParms parms = new DecompressChunkParms(compressedBytes, thisChunkSize, chunkOffset, context, exceptions);
-        #             threadPool.QueueUserWorkItem(callback, parms);
-        #         }
-        #         else
-        #         {
-        #             fixed (byte *pbSrc = compressedBytes)
-        #             {
-        #                 Memory.Copy((void *)((byte *)this.VoidStar + chunkOffset), (void *)pbSrc, thisChunkSize);
-        #             }
-        #         }
+                if formatVersion == 0:
+                    decompressedData = gzip.decompress(rawData)
+                    data[chunkOffset:chunkOffset + actualChunkSize] = decompressedData
+                else:
+                    data[chunkOffset:chunkOffset + actualChunkSize] = rawData
 
-        print(chunkNumber, dataSize)
+            # Okay, so now take the data and convert it to a PNG image to display
 
-    print(formatVersion, chunkSize)
-    print(chunkCount, chunksFound)
-    print('')
-    print('')
+            # With the data read in as one large 1D array, we now format the data properly
+            # Calculate the bits per pixel
+            bpp = stride * 8 / layeredImage.width
 
-    # Okay, so now take the data and convert it to a PNG image to display
-    bpp = surface.stride * 8 / surface.width
+            # Convert 1D array to image array
+            if bpp == 32:
+                image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 4))
+                #         image = np.flip(image, axis=2)
+                image[:, :, 0:3] = np.flip(image[:, :, 0:3], axis=-1)
+            elif bpp == 24:
+                pass
+            else:
+                raise PDNReaderError('Invalid bpp %i' % bpp)
 
-    if bpp == 32:
-        image = np.frombuffer(data, np.uint8).reshape((surface.height, surface.width, 4))
-        #         image = np.flip(image, axis=2)
-        image[:, :, 0:3] = np.flip(image[:, :, 0:3], axis=-1)
-    elif bpp == 24:
-        pass
-    else:
-        raise PDNReaderError('Invalid bpp %i' % bpp)
+            if layer.name == 'Background':
+                continue
 
-    plt.imshow(image)
+            plt.imshow(image)
+            plt.show()
+            break
+
+
+filename = '../tests/data/Untitled2.pdn'
+read(filename)

@@ -128,15 +128,11 @@ class JSONEncoder(json.JSONEncoder):
             # cause circular dependencies
             return OrderedDict(_class_name=o.__class__.__name__, id=o._id)
         elif hasattr(o, '_asdict'):
-            if o._ref_count != 0:
-                return 'Circular ref'
-            else:
-                o._ref_count += 1
-                d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
-                if hasattr(o, '_id'):
-                    d['_id'] = o._id
-                d.update(o._asdict())
-                return d
+            d = OrderedDict(_class_name=o.__class__.__name__)  # prepend the class name
+            if hasattr(o, '_id'):
+                d['_id'] = o._id
+            d.update(o._asdict())
+            return d
         elif isinstance(o, (datetime, timedelta)):
             return str(o)
         elif isinstance(o, Decimal):
