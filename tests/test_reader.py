@@ -33,7 +33,7 @@ class TestReader(unittest.TestCase):
         self.flattenOpacityTest = imageio.imread(getDataPath('flattenOpacityTest.png'), ignoregamma=True)
 
     def test_read(self):
-        layeredImage = read('./data/Untitled3.pdn')
+        layeredImage = read(getDataPath('Untitled3.pdn'))
 
         self.assertEqual(layeredImage.width, 800)
         self.assertEqual(layeredImage.height, 600)
@@ -68,7 +68,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_equal(layer.image[:, :, 0:3], self.layerVisibleTest2[:, :, 0:3])
 
     def test_flatten_normal1(self):
-        layeredImage = read('./data/Untitled2.pdn')
+        layeredImage = read(getDataPath('Untitled2.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 2)
 
@@ -86,7 +86,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_equal(image, self.flattenNormalTest2)
 
     def test_flatten_normal2(self):
-        layeredImage = read('./data/Untitled2.pdn')
+        layeredImage = read(getDataPath('Untitled2.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 2)
 
@@ -105,7 +105,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenNormalTest, atol=2)
 
     def test_flatten_notasbyte(self):
-        layeredImage = read('./data/Untitled2.pdn')
+        layeredImage = read(getDataPath('Untitled2.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 2)
 
@@ -123,7 +123,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_equal(image, self.flattenNormalTest2 / 255.)
 
     def test_flatten_multiply(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -147,7 +147,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenMultiplyTest, atol=2)
 
     def test_flatten_additive(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -169,7 +169,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenAdditiveTest, atol=2)
 
     def test_flatten_colorBurn(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -191,7 +191,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenColorBurnTest, atol=2)
 
     def test_flatten_colorDodge(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -213,7 +213,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenColorDodgeTest, atol=2)
 
     def test_flatten_reflect(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -235,7 +235,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenReflectTest, atol=2)
 
     def test_flatten_glow(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -257,7 +257,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenGlowTest, atol=2)
 
     def test_flatten_overlay(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -279,7 +279,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenOverlayTest, atol=2)
 
     def test_flatten_difference(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -301,7 +301,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenDifferenceTest, atol=2)
 
     def test_flatten_negation(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -323,7 +323,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenNegationTest, atol=2)
 
     def test_flatten_lighten(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -345,7 +345,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenLightenTest, atol=2)
 
     def test_flatten_darken(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -367,7 +367,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenDarkenTest, atol=2)
 
     def test_flatten_screen(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -389,7 +389,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenScreenTest, atol=2)
 
     def test_flatten_xor(self):
-        layeredImage = read('./data/FlattenBlendTest.pdn')
+        layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 14)
 
@@ -411,7 +411,7 @@ class TestReader(unittest.TestCase):
         np.testing.assert_allclose(image, self.flattenXORTest, atol=2)
 
     def test_flatten_opacity(self):
-        layeredImage = read('./data/Untitled3.pdn')
+        layeredImage = read(getDataPath('Untitled3.pdn'))
 
         self.assertEqual(len(layeredImage.layers), 2)
 
