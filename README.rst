@@ -1,6 +1,8 @@
 Introduction
 =================
-pypdn is a Python package for reading and writing Paint.NET (PDN) images. "Paint.NET is image and photo editing software for PCs that run Windows. It features an intuitive and innovative user interface with support for layers, unlimited undo, special effects, and a wide variety of useful and powerful tools. An active and growing online community provides friendly help, tutorials, and plugins."
+pypdn is a Python package for reading and writing Paint.NET (PDN) images.
+
+"Paint.NET is image and photo editing software for PCs that run Windows. It features an intuitive and innovative user interface with support for layers, unlimited undo, special effects, and a wide variety of useful and powerful tools. An active and growing online community provides friendly help, tutorials, and plugins."
 
 When using Paint.NET, the default file format that the images are saved in are PDN's, which is a proprietary format Paint.NET uses. The benefit of this format over BMP, PNG, JPEG, etc is that it stores layer information and properties that are not present in traditional image formats.
 
@@ -52,31 +54,56 @@ the repository directory::
 
 Example
 =================
-TODO Fix this up
-Input image:
-
-.. image:: http://polartransform.readthedocs.io/en/latest/_images/verticalLines.png
-    :alt: Cartesian image
+For the below example, any PDN file will do. If you are looking for an example, check out the tests/data directory for
+some!
 
 .. code-block:: python
 
-    import polarTransform
+    import pypdn
     import matplotlib.pyplot as plt
-    import imageio
 
-    verticalLinesImage = imageio.imread('IMAGE_PATH_HERE')
+    layeredImage = pypdn.read('Untitled3.pdn')
+    print(layeredImage)
+    # Contains width, height, version and layers of the image within the class
+    # Version being the Paint.NET version that the image was saved with
 
-    polarImage, ptSettings = polarTransform.convertToPolarImage(verticalLinesImage, initialRadius=30,
-                                                                finalRadius=100, initialAngle=2 / 4 * np.pi,
-                                                                finalAngle=5 / 4 * np.pi)
+    # Each layer contains the name, visibility boolean, opacity (0-255), isBackground and blendMode
+    # From what I can tell, the isBackground property is not that useful
+    # The blend mode is how the layer should be blended with the layers below it
+    # These attributes are loaded from the PDN file but can be edited in the code as well
+    print(layeredImage.layers)
+    layer = layeredImage.layers[0]
+    layer.visible = True
+    layer.opacity = 255
+    layer.blendMode = pypdn.BlendType.Normal
 
-    cartesianImage = ptSettings.convertToCartesianImage(polarImage)
+    layer = layeredImage.layers[1]
+    layer.visible = True
+    layer.opacity = 161
+    layer.blendMode = pypdn.BlendType.Additive
+
+    # Finally, the most useful thing is being able to combine the layers and flattn them into one image
+    # Call the flatten function to do so
+    # It will go through each layer and apply them IF the visibility is true!
+    # The layer opacity and blend mode will be taken into effect
+    #
+    # The flattened image is a RGBA Numpy array image
+    # The asByte parameter determines the data type of the flattened image
+    # If asByte is True, then the dtype will be uint8, otherwise it will be a float in range (0.0, 1.0)
+    flatImage = layeredImage.flatten(asByte=True)
 
     plt.figure()
-    plt.imshow(polarImage, origin='lower')
+    plt.imshow(flatImage)
 
+    # Individual layer images can be retrieved as well
+    # Note: This does NOT apply blending or the layer opacity
+    # Rather, it is the image data that is saved by Paint.NET for the layer
     plt.figure()
-    plt.imshow(cartesianImage, origin='lower')
+    plt.imshow(layeredImage.layers[1].image)
+
+    plt.show()
+
+Using the Untitled3.pdn in the tests/data directory, this is the text output:
 
 Resulting polar domain image:
 
