@@ -1,7 +1,6 @@
 import gzip
 import struct
 
-import matplotlib.pyplot as plt
 import numpy as np
 import skimage
 from aenum import IntEnum
@@ -236,19 +235,20 @@ def blendingFunc(A, B, blendType):
     elif blendType == BlendType.Glow:
         return np.where(A != 1.0, np.minimum((B ** 2) / (1.0 - A), 1.0), 1.0)
     elif blendType == BlendType.Overlay:
-        pass
+        return np.where(A < 0.5, 2 * A * B, 1.0 - (2 * (1.0 - A) * (1.0 - B)))
     elif blendType == BlendType.Difference:
-        pass
+        return np.abs(A - B)
     elif blendType == BlendType.Negation:
-        pass
+        return 1.0 - np.abs(1.0 - A - B)
     elif blendType == BlendType.Lighten:
-        pass
+        return np.maximum(A, B)
     elif blendType == BlendType.Darken:
-        pass
+        return np.minimum(A, B)
     elif blendType == BlendType.Screen:
-        pass
+        return A + B - A * B
     elif blendType == BlendType.XOR:
-        pass
+        # XOR is meant for integer numbers, so must convert to uint8 first
+        return skimage.img_as_float(skimage.img_as_ubyte(A) ^ skimage.img_as_ubyte(B))
 
 
 def applyBlending(A, B, blendType):
@@ -285,7 +285,6 @@ def applyBlending(A, B, blendType):
 
     # Return RGBA image by combining RGB and A
     return np.dstack((colorComponents, alphaComponent))
-
 
 # filename = '../tests/data/Untitled2.pdn'
 # layeredImage = read(filename)
