@@ -216,8 +216,6 @@ def read(filename):
 
 
 def blendingFunc(A, B, blendType):
-    # TODO Finish blending functions
-
     # See here for information on Paint.NET's blending functions:
     # https://github.com/rivy/OpenPDN/blob/master/src/Data/UserBlendOps.Generated.H.cs
     if blendType == BlendType.Normal:

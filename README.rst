@@ -45,12 +45,14 @@ the updated polarTransform code.
 
 Test and coverage
 =================
-To test the code on any platform, make sure to clone the GitHub repository to get the tests and::
+To test the code on any platform, make sure to clone the GitHub repository to get the tests and run the following from
+the repository directory::
 
-  python tests/test_polarTransform.py
+  python -m unittest discover tests
 
 Example
 =================
+TODO Fix this up
 Input image:
 
 .. image:: http://polartransform.readthedocs.io/en/latest/_images/verticalLines.png
@@ -85,6 +87,16 @@ Converting back to the cartesian image results in:
 
 .. image:: http://polartransform.readthedocs.io/en/latest/_images/verticalLinesCartesianImage_scaled.png
     :alt: Cartesian image
+
+Roadmap & Bugs
+=================
+- Write docstrings and create basic documentation for NRBF and PDN classes
+- Fix issue where _id and _classID are mixed up in NRBF reader
+- Add support for writing NRBF files
+- Write unit tests for NRBF
+- Add support for writing PDN files (must complete writing NRBF files first)
+
+Pull requests are welcome (and encouraged) for any or all issues!
 
 License
 =================
