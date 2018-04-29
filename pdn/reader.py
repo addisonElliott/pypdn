@@ -285,11 +285,3 @@ def applyBlending(A, B, blendType):
 
     # Return RGBA image by combining RGB and A
     return np.dstack((colorComponents, alphaComponent))
-
-# filename = '../tests/data/Untitled2.pdn'
-# layeredImage = read(filename)
-#
-# image = layeredImage.flatten()
-#
-# plt.imshow(image)
-# plt.show()

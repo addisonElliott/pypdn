@@ -1,9 +1,11 @@
 import os
 import sys
 import unittest
-from pdn.reader import *
+
 import imageio
 import numpy as np
+
+from pdn.reader import *
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,6 +33,8 @@ class TestReader(unittest.TestCase):
         self.flattenDarkenTest = imageio.imread('./data/flattenDarkenTest.png', ignoregamma=True)
         self.flattenScreenTest = imageio.imread('./data/flattenScreenTest.png', ignoregamma=True)
         self.flattenXORTest = imageio.imread('./data/flattenXORTest.png', ignoregamma=True)
+
+        self.flattenOpacityTest = imageio.imread('./data/flattenOpacityTest.png', ignoregamma=True)
 
     def test_read(self):
         layeredImage = read('./data/Untitled3.pdn')
@@ -410,7 +414,25 @@ class TestReader(unittest.TestCase):
         # May be rounding errors so do within 2 points
         np.testing.assert_allclose(image, self.flattenXORTest, atol=2)
 
-    # TODO Then test opacity changing with a blend type (one test is fine for me)
+    def test_flatten_opacity(self):
+        layeredImage = read('./data/Untitled3.pdn')
+
+        self.assertEqual(len(layeredImage.layers), 2)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 255)
+        self.assertEqual(layer.blendMode, BlendType.Normal)
+
+        layer = layeredImage.layers[1]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 161)
+        self.assertEqual(layer.blendMode, BlendType.Additive)
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image, self.flattenOpacityTest, atol=2)
 
 
 if __name__ == '__main__':
