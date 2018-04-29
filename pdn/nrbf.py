@@ -62,9 +62,7 @@ class NRBF:
         self.objectsByID = {}
 
         # Keeps track of references so that after reading is done, the references can be resolved
-        # Member references are for class members while collection references replace the system collections
-        # with Python equivalent types such as dict or list
-        self._memberReferences = []
+        # collection references replace the system collections with Python equivalent types such as dict or list
         self._collectionReferences = []
 
         # If a stream or filename to be loaded is given, then call the read function
@@ -89,7 +87,6 @@ class NRBF:
             self.binaryLibraries = {}
             self.classByID = {}
             self.objectsByID = {}
-            self._memberReferences = []
             self._collectionReferences = []
 
         self.stream = stream
@@ -136,10 +133,18 @@ class NRBF:
         # Note: Collection references must be saved so that it can be converted back
         # when saving the file again.
 
-        # Resolve all the (remaining) simple member references
-        for reference in self._memberReferences:
-            self._resolveSimpleReference(reference)
-        self._memberReferences.clear()
+        # Loop through all of the objects
+        for _, object in self.objectsByID.items():
+            # Attempt to iterate through the object
+            # If it doesnt work, then move on to the next item because there wont need to be any
+            # references.
+            # Otherwise, if any of the items have an object ID, create a reference
+            try:
+                for index, item in enumerate(object):
+                    if isinstance(item, Reference):
+                        self._resolveSimpleReference(item)
+            except TypeError:
+                pass
 
         self.referencesResolved = True
 
@@ -153,7 +158,6 @@ class NRBF:
             try:
                 for index, item in enumerate(object):
                     if hasattr(item, '_id'):
-                        # TODO I need to add back to resolvedReferences thing, but I would like to get rid of that anyway!
                         object[index] = Reference(item._id, object, index)
             except TypeError:
                 pass
@@ -491,7 +495,6 @@ class NRBF:
     def _readMemberReference(self):
         # objectID
         ref = Reference(self._readInt32())
-        self._memberReferences.append(ref)
 
         return ref
 

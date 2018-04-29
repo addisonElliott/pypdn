@@ -25,9 +25,9 @@ with open(filename, 'rb') as fh:
     root = x.getRoot()
 
     print('Test')
-    x.unresolveReferences()
-    json_encoder = pdn.util.JSONEncoder(indent=4)
-    print(json_encoder.encode(x))
+    # x.unresolveReferences()
+    # json_encoder = pdn.util.JSONEncoder(indent=4)
+    # print(json_encoder.encode(x))
 
     print(root)
 
