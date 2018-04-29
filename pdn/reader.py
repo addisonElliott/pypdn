@@ -1,11 +1,3 @@
-# TODO This is the goal API we are going for
-# import pdn
-#
-# pdn.read(xxx)
-#
-#
-# pdn.write(xxx)
-
 import gzip
 import struct
 
@@ -14,6 +6,10 @@ from aenum import IntEnum
 
 from pdn.nrbf import NRBF
 
+
+# TODO Add API for writing PDN file
+
+# TODO Write docstrings basic
 
 class PDNReaderError(Exception):
     """Exceptions for Paint.NET Reader module."""
@@ -51,6 +47,7 @@ class LayeredImage:
                                                                                              self.version, self.layers)
 
     def flattenImage(self, useAll=False, applyBlendMode=True):
+        # TODO Write this
         # Take each layer and apply to get the resulting image
         pass
 

@@ -10,6 +10,7 @@ from pdn.util import *
 # Thanks to Christopher Gurnee!
 
 # TODO Do documentation and docstrings for this
+# TODO Issue with reporting _id in JSON or something. classID vs _id is issue
 
 class NRBFError(Exception):
     """Exceptions for NRBFError class."""
@@ -113,6 +114,7 @@ class NRBF:
         assert stream.writable()
         assert stream.seekable()
 
+        # TODO Write NRBF files
         raise NotImplementedError('Writing a NRBF file is not supported yet')
 
     def getRoot(self):
