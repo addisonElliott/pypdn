@@ -113,6 +113,8 @@ class NRBF:
         assert stream.writable()
         assert stream.seekable()
 
+        raise NotImplementedError('Writing a NRBF file is not supported yet')
+
     def getRoot(self):
         assert self.rootID is not None
 
