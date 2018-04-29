@@ -218,6 +218,9 @@ def read(filename):
 
 def blendingFunc(A, B, blendType):
     # TODO Finish blending functions
+
+    # See here for information on Paint.NET's blending functions:
+    # https://github.com/rivy/OpenPDN/blob/master/src/Data/UserBlendOps.Generated.H.cs
     if blendType == BlendType.Normal:
         return B
     elif blendType == BlendType.Multiply:
@@ -225,13 +228,13 @@ def blendingFunc(A, B, blendType):
     elif blendType == BlendType.Additive:
         return np.minimum(A + B, 1.0)
     elif blendType == BlendType.ColorBurn:
-        pass
+        return np.where(B != 0.0, np.maximum(1.0 - ((1.0 - A) / B), 0.0), 0.0)
     elif blendType == BlendType.ColorDodge:
-        pass
+        return np.where(B != 1.0, np.minimum(A / (1.0 - B), 1.0), 1.0)
     elif blendType == BlendType.Reflect:
-        pass
+        return np.where(B != 1.0, np.minimum((A ** 2) / (1.0 - B), 1.0), 1.0)
     elif blendType == BlendType.Glow:
-        pass
+        return np.where(A != 1.0, np.minimum((B ** 2) / (1.0 - A), 1.0), 1.0)
     elif blendType == BlendType.Overlay:
         pass
     elif blendType == BlendType.Difference:

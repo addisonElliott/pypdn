@@ -168,102 +168,94 @@ class TestReader(unittest.TestCase):
         # May be rounding errors so do within 2 points
         np.testing.assert_allclose(image, self.flattenAdditiveTest, atol=2)
 
-    # def test_flatten_colorBurn(self):
-    #     layeredImage = read('./data/FlattenBlendTest.pdn')
-    #
-    #     self.assertEqual(len(layeredImage.layers), 14)
-    #
-    #     layer = layeredImage.layers[0]
-    #     layer.visible = True
-    #     self.assertEqual(layer.opacity, 255)
-    #     self.assertEqual(layer.blendMode, BlendType.Normal)
-    #
-    #     desiredLayer = BlendType.ColorBurn
-    #     for x in range(1, 14):
-    #         layeredImage.layers[x].visible = (x == desiredLayer)
-    #
-    #     self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
-    #     self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
-    #
-    #     image = layeredImage.flatten(asByte=True)
-    #
-    #     # plt.imshow(image)
-    #     # plt.show()
-    #     # May be rounding errors so do within 2 points
-    #     np.testing.assert_allclose(image, self.flattenColorBurnTest, atol=2)
-    #
-    # def test_flatten_colorDodge(self):
-    #     layeredImage = read('./data/FlattenBlendTest.pdn')
-    #
-    #     self.assertEqual(len(layeredImage.layers), 14)
-    #
-    #     layer = layeredImage.layers[0]
-    #     layer.visible = True
-    #     self.assertEqual(layer.opacity, 255)
-    #     self.assertEqual(layer.blendMode, BlendType.Normal)
-    #
-    #     desiredLayer = BlendType.ColorDodge
-    #     for x in range(1, 14):
-    #         layeredImage.layers[x].visible = (x == desiredLayer)
-    #
-    #     self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
-    #     self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
-    #
-    #     image = layeredImage.flatten(asByte=True)
-    #
-    #     # plt.imshow(image)
-    #     # plt.show()
-    #     # May be rounding errors so do within 2 points
-    #     np.testing.assert_allclose(image, self.flattenColorDodgeTest, atol=2)
-    #
-    # def test_flatten_reflect(self):
-    #     layeredImage = read('./data/FlattenBlendTest.pdn')
-    #
-    #     self.assertEqual(len(layeredImage.layers), 14)
-    #
-    #     layer = layeredImage.layers[0]
-    #     layer.visible = True
-    #     self.assertEqual(layer.opacity, 255)
-    #     self.assertEqual(layer.blendMode, BlendType.Normal)
-    #
-    #     desiredLayer = BlendType.Reflect
-    #     for x in range(1, 14):
-    #         layeredImage.layers[x].visible = (x == desiredLayer)
-    #
-    #     self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
-    #     self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
-    #
-    #     image = layeredImage.flatten(asByte=True)
-    #
-    #     # plt.imshow(image)
-    #     # plt.show()
-    #     # May be rounding errors so do within 2 points
-    #     np.testing.assert_allclose(image, self.flattenReflectTest, atol=2)
-    #
-    # def test_flatten_glow(self):
-    #     layeredImage = read('./data/FlattenBlendTest.pdn')
-    #
-    #     self.assertEqual(len(layeredImage.layers), 14)
-    #
-    #     layer = layeredImage.layers[0]
-    #     layer.visible = True
-    #     self.assertEqual(layer.opacity, 255)
-    #     self.assertEqual(layer.blendMode, BlendType.Normal)
-    #
-    #     desiredLayer = BlendType.Glow
-    #     for x in range(1, 14):
-    #         layeredImage.layers[x].visible = (x == desiredLayer)
-    #
-    #     self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
-    #     self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
-    #
-    #     image = layeredImage.flatten(asByte=True)
-    #
-    #     # plt.imshow(image)
-    #     # plt.show()
-    #     # May be rounding errors so do within 2 points
-    #     np.testing.assert_allclose(image, self.flattenGlowTest, atol=2)
-    #
+    def test_flatten_colorBurn(self):
+        layeredImage = read('./data/FlattenBlendTest.pdn')
+
+        self.assertEqual(len(layeredImage.layers), 14)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 255)
+        self.assertEqual(layer.blendMode, BlendType.Normal)
+
+        desiredLayer = BlendType.ColorBurn
+        for x in range(1, 14):
+            layeredImage.layers[x].visible = (x == desiredLayer)
+
+        self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
+        self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image, self.flattenColorBurnTest, atol=2)
+
+    def test_flatten_colorDodge(self):
+        layeredImage = read('./data/FlattenBlendTest.pdn')
+
+        self.assertEqual(len(layeredImage.layers), 14)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 255)
+        self.assertEqual(layer.blendMode, BlendType.Normal)
+
+        desiredLayer = BlendType.ColorDodge
+        for x in range(1, 14):
+            layeredImage.layers[x].visible = (x == desiredLayer)
+
+        self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
+        self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image, self.flattenColorDodgeTest, atol=2)
+
+    def test_flatten_reflect(self):
+        layeredImage = read('./data/FlattenBlendTest.pdn')
+
+        self.assertEqual(len(layeredImage.layers), 14)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 255)
+        self.assertEqual(layer.blendMode, BlendType.Normal)
+
+        desiredLayer = BlendType.Reflect
+        for x in range(1, 14):
+            layeredImage.layers[x].visible = (x == desiredLayer)
+
+        self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
+        self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image, self.flattenReflectTest, atol=2)
+
+    def test_flatten_glow(self):
+        layeredImage = read('./data/FlattenBlendTest.pdn')
+
+        self.assertEqual(len(layeredImage.layers), 14)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+        self.assertEqual(layer.opacity, 255)
+        self.assertEqual(layer.blendMode, BlendType.Normal)
+
+        desiredLayer = BlendType.Glow
+        for x in range(1, 14):
+            layeredImage.layers[x].visible = (x == desiredLayer)
+
+        self.assertEqual(layeredImage.layers[desiredLayer].opacity, 255)
+        self.assertEqual(layeredImage.layers[desiredLayer].blendMode, desiredLayer)
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image, self.flattenGlowTest, atol=2)
+
     # def test_flatten_overlay(self):
     #     layeredImage = read('./data/FlattenBlendTest.pdn')
     #
