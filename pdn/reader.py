@@ -1,7 +1,9 @@
 import gzip
 import struct
 
+import matplotlib.pyplot as plt
 import numpy as np
+import skimage
 from aenum import IntEnum
 
 from pdn.nrbf import NRBF
@@ -46,10 +48,38 @@ class LayeredImage:
         return 'pdn.LayeredImage(width={0}, height={1}, version={2!r}, layers={3!r})'.format(self.width, self.height,
                                                                                              self.version, self.layers)
 
-    def flattenImage(self, useAll=False, applyBlendMode=True):
-        # TODO Write this
-        # Take each layer and apply to get the resulting image
-        pass
+    def flatten(self, useAll=False, applyBlendMode=True, asByte=False):
+        if len(self.layers) == 0:
+            return None
+
+        # Create empty RGBA image to hold the flattened image
+        # Use float datatype because that is how the calculations are done to prevent scaling
+        # Image can be scaled at the end
+        image = np.zeros((self.height, self.width, 4), dtype=float)
+
+        for layer in self.layers:
+            if useAll or layer.visible:
+                blendMode = BlendType.Normal if not applyBlendMode else layer.blendMode
+
+                # Operations must be done on float image!
+                normalizedImage = skimage.img_as_float(layer.image)
+
+                # Apply the layer opacity to the image here
+                # If the image does not have an alpha component, extend the image to contain one
+                if normalizedImage.shape[2] == 3:
+                    alpha = np.ones(normalizedImage.shape[:-1], dtype=float)
+                    normalizedImage = np.dstack((normalizedImage, alpha))
+
+                # Now multiply the layer opacity by the alpha component of image
+                normalizedImage[:, :, 3] = normalizedImage[:, :, 3] * (layer.opacity / 255.)
+
+                # Take current image and apply the normalized image from the layer to it with specified blend mode
+                image = applyBlending(image, normalizedImage, blendMode)
+
+        if asByte:
+            image = skimage.img_as_ubyte(image)
+
+        return image
 
 
 class Layer:
@@ -184,5 +214,78 @@ def read(filename):
             raise PDNReaderError('Unable to read fields in NRBF PDN file')
 
 
-filename = '../tests/data/Untitled2.pdn'
-print(read(filename))
+def blendingFunc(A, B, blendType):
+    # TODO Finish blending functions
+    if blendType == BlendType.Normal:
+        return B
+    elif blendType == BlendType.Multiply:
+        pass
+    elif blendType == BlendType.Additive:
+        pass
+    elif blendType == BlendType.ColorBurn:
+        pass
+    elif blendType == BlendType.ColorDodge:
+        pass
+    elif blendType == BlendType.Reflect:
+        pass
+    elif blendType == BlendType.Glow:
+        pass
+    elif blendType == BlendType.Overlay:
+        pass
+    elif blendType == BlendType.Difference:
+        pass
+    elif blendType == BlendType.Negation:
+        pass
+    elif blendType == BlendType.Lighten:
+        pass
+    elif blendType == BlendType.Darken:
+        pass
+    elif blendType == BlendType.Screen:
+        pass
+    elif blendType == BlendType.XOR:
+        pass
+
+
+def applyBlending(A, B, blendType):
+    # The generalized alpha composite with a changeable blending function is shown below
+    #
+    # G(A,a,B,b,F) = (a - ab)A + (b - ab)B + abF(A, B)
+    #
+    # Where:
+    #   A = background color
+    #   a = background alpha
+    #   B = foreground color
+    #   b = foreground alpha
+    #   F is blending function (F(A,B))
+    #
+    # This is what Paint.NET uses to create the flattened image and I do so as well but with Numpy to make it
+    # easier.
+    aAlpha = A[:, :, 3]
+    bAlpha = B[:, :, 3]
+    abAlpha = aAlpha * bAlpha
+
+    aColor = A[:, :, 0:3]
+    bColor = B[:, :, 0:3]
+
+    # Use generalized alpha compositing equation shown above to calculate the color components of the image
+    # To be able to multiply along each component (R,G,B), we must add a new axis to the difference portion
+    # That is what the None field indicates
+    colorComponents = (aAlpha - abAlpha)[:, :, None] * aColor + \
+                      (bAlpha - abAlpha)[:, :, None] * bColor + \
+                      abAlpha[:, :, None] * blendingFunc(aColor, bColor, blendType)
+
+    # #define COMPUTE_ALPHA(a, b, r) { INT_SCALE(a, 255 - (b), r); r += (b); }
+    # alphaComponent = aAlpha * (1.0 - bAlpha) + bAlpha
+    alphaComponent = aAlpha + bAlpha - abAlpha
+
+    # Return RGBA image by combining RGB and A
+    return np.dstack((colorComponents, alphaComponent))
+
+
+# filename = '../tests/data/Untitled2.pdn'
+# layeredImage = read(filename)
+#
+# image = layeredImage.flatten()
+#
+# plt.imshow(image)
+# plt.show()
