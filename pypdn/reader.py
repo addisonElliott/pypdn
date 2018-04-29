@@ -4,6 +4,7 @@ import struct
 import numpy as np
 import skimage
 from aenum import IntEnum
+import warnings
 
 from pypdn.nrbf import NRBF
 
@@ -78,7 +79,10 @@ class LayeredImage:
         # Paint.NET stores everything as uint8's
         # We had to convert to float to flatten the image and now we can convert back to uint8 if desired
         if asByte:
-            image = skimage.img_as_ubyte(image)
+            # Catch warnings to prevent the possible precision lost warning
+            # Personally, I think the user should know that converting to a uint8 will cause precision lost from float
+            with warnings.catch_warnings():
+                image = skimage.img_as_ubyte(image)
 
         return image
 
@@ -246,7 +250,9 @@ def blendingFunc(A, B, blendType):
         return A + B - A * B
     elif blendType == BlendType.XOR:
         # XOR is meant for integer numbers, so must convert to uint8 first
-        return skimage.img_as_float(skimage.img_as_ubyte(A) ^ skimage.img_as_ubyte(B))
+        # Catch warnings to prevent the precision lost warning
+        with warnings.catch_warnings():
+            return skimage.img_as_float(skimage.img_as_ubyte(A) ^ skimage.img_as_ubyte(B))
 
 
 def applyBlending(A, B, blendType):
