@@ -6,12 +6,13 @@
 #
 # pdn.write(xxx)
 
-import struct
-from pdn.nrbf import NRBF
-import numpy as np
 import gzip
-import matplotlib.pyplot as plt
+import struct
+
+import numpy as np
 from aenum import IntEnum
+
+from pdn.nrbf import NRBF
 
 
 class PDNReaderError(Exception):
@@ -45,21 +46,29 @@ class LayeredImage:
         self.version = version
         self.layers = []
 
-    # TODO Define repr
+    def __repr__(self):
+        return 'pdn.LayeredImage(width={0}, height={1}, version={2!r}, layers={3!r})'.format(self.width, self.height,
+                                                                                             self.version, self.layers)
+
+    def flattenImage(self, useAll=False, applyBlendMode=True):
+        # Take each layer and apply to get the resulting image
+        pass
 
 
 class Layer:
     __slots__ = ['name', 'visible', 'isBackground', 'opacity', 'blendMode', 'image']
 
-    def __init__(self, name, visible, isBackground, opacity, blendMode):
+    def __init__(self, name, visible, isBackground, opacity, blendMode, image):
         self.name = name
         self.visible = visible
         self.isBackground = isBackground
         self.opacity = opacity
         self.blendMode = blendMode
-        self.image = None
+        self.image = image
 
-    # TODO Define repr
+    def __repr__(self):
+        return 'pdn.Layer(name={0}, visible={1}, isBackground={2}, opacity={3}, blendMode={4!r})' \
+            .format(self.name, self.visible, self.isBackground, self.opacity, self.blendMode)
 
 
 def read(filename):
@@ -87,20 +96,16 @@ def read(filename):
         nrbfData = NRBF(stream=fh)
         pdnDocument = nrbfData.getRoot()
 
-        # print(nrbfData.toJSON(resolveReferences=False, indent=4))
-
         try:
             layeredImage = LayeredImage(pdnDocument.width, pdnDocument.height, pdnDocument.savedWith)
         except (AttributeError):
             raise PDNReaderError('Unable to read fields in NRBF PDN file')
 
         # TODO Check for field here with exception try/catch maybe
-        for bitmapLayer in pdnDocument.layers.ArrayList__items:
+        # Cannot loop through items array because sometimes it is padded with null objects, size is right though
+        for index in range(pdnDocument.layers.ArrayList__size):
+            bitmapLayer = pdnDocument.layers.ArrayList__items[index]
             layerProps = bitmapLayer.Layer_properties
-
-            # Setup layer with basic parameters
-            layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
-                          BlendType(layerProps.blendMode.value__))
 
             # Read information from layer that is used to read the image data
             assert bitmapLayer.Layer_width == layeredImage.width
@@ -159,8 +164,6 @@ def read(filename):
                 else:
                     data[chunkOffset:chunkOffset + actualChunkSize] = rawData
 
-            # Okay, so now take the data and convert it to a PNG image to display
-
             # With the data read in as one large 1D array, we now format the data properly
             # Calculate the bits per pixel
             bpp = stride * 8 / layeredImage.width
@@ -168,20 +171,20 @@ def read(filename):
             # Convert 1D array to image array
             if bpp == 32:
                 image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 4))
-                #         image = np.flip(image, axis=2)
                 image[:, :, 0:3] = np.flip(image[:, :, 0:3], axis=-1)
             elif bpp == 24:
-                pass
+                image = np.frombuffer(data, np.uint8).reshape((layeredImage.height, layeredImage.width, 3))
+                image[:, :, 0:2] = np.flip(image[:, :, 0:2], axis=-1)
             else:
                 raise PDNReaderError('Invalid bpp %i' % bpp)
 
-            if layer.name == 'Background':
-                continue
+            # Setup layer with information and append to the layers list
+            layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
+                          BlendType(layerProps.blendMode.value__), image)
+            layeredImage.layers.append(layer)
 
-            plt.imshow(image)
-            plt.show()
-            break
+    return layeredImage
 
 
 filename = '../tests/data/Untitled2.pdn'
-read(filename)
+print(read(filename))
