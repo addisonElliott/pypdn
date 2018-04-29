@@ -82,6 +82,7 @@ class LayeredImage:
             # Catch warnings to prevent the possible precision lost warning
             # Personally, I think the user should know that converting to a uint8 will cause precision lost from float
             with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
                 image = skimage.img_as_ubyte(image)
 
         return image
@@ -252,6 +253,7 @@ def blendingFunc(A, B, blendType):
         # XOR is meant for integer numbers, so must convert to uint8 first
         # Catch warnings to prevent the precision lost warning
         with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
             return skimage.img_as_float(skimage.img_as_ubyte(A) ^ skimage.img_as_ubyte(B))
 
 
