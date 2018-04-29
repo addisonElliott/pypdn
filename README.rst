@@ -50,7 +50,7 @@ Test and coverage
 To test the code on any platform, make sure to clone the GitHub repository to get the tests and run the following from
 the repository directory::
 
-  python -m unittest discover tests
+  python -m unittest discover -v tests
 
 Example
 =================
@@ -105,15 +105,13 @@ some!
 
 Using the Untitled3.pdn in the tests/data directory, this is the text output:
 
-Resulting polar domain image:
+.. code-block::
 
-.. image:: http://polartransform.readthedocs.io/en/latest/_images/verticalLinesPolarImage_scaled3.png
-    :alt: Polar image
+    >>> print(layeredImage)
+    pypdn.LayeredImage(width=800, height=600, version=System_Version(Major=4, Minor=21, Build=6589, Revision=7045), layers=[pypdn.Layer(name=Background, visible=True, isBackground=True, opacity=255, blendMode=<BlendType.Normal: 0>), pypdn.Layer(name=Layer 2, visible=True, isBackground=False, opacity=161, blendMode=<BlendType.Additive: 2>)])
 
-Converting back to the cartesian image results in:
-
-.. image:: http://polartransform.readthedocs.io/en/latest/_images/verticalLinesCartesianImage_scaled.png
-    :alt: Cartesian image
+    >>> print(layeredImage.layers)
+    [pypdn.Layer(name=Background, visible=True, isBackground=True, opacity=255, blendMode=<BlendType.Normal: 0>), pypdn.Layer(name=Layer 2, visible=True, isBackground=False, opacity=161, blendMode=<BlendType.Additive: 2>)]
 
 Roadmap & Bugs
 =================
