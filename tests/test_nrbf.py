@@ -3,8 +3,6 @@ import sys
 import unittest
 from pypdn.nrbf import NRBF
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 # TODO Write NRBF unit tests
 class TestNRBF(unittest.TestCase):
     def setUp(self):

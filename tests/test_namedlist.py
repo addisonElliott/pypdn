@@ -3,8 +3,6 @@ import sys
 import unittest
 from pypdn.namedlist import namedlist
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 
 class TestNamedlist(unittest.TestCase):
     def setUp(self):

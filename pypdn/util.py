@@ -3,7 +3,7 @@ import json
 import re
 from collections import OrderedDict
 from decimal import Decimal
-from enum import IntEnum
+from aenum import IntEnum
 from keyword import iskeyword
 import pypdn.nrbf
 

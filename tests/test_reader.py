@@ -5,33 +5,32 @@ import unittest
 import imageio
 
 from pypdn.reader import *
-
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from tests.util import getDataPath
 
 
 class TestReader(unittest.TestCase):
     def setUp(self):
-        self.layerVisibleTest1 = imageio.imread('./data/layerVisibleTest1.png', ignoregamma=True)
-        self.layerVisibleTest2 = imageio.imread('./data/layerVisibleTest2.png', ignoregamma=True)
-        self.layerVisibleTest3 = imageio.imread('./data/layerVisibleTest3.png', ignoregamma=True)
-        self.flattenNormalTest = imageio.imread('./data/flattenNormalTest.png', ignoregamma=True)
-        self.flattenNormalTest2 = imageio.imread('./data/flattenNormalTest2.png', ignoregamma=True)
+        self.layerVisibleTest1 = imageio.imread(getDataPath('layerVisibleTest1.png'), ignoregamma=True)
+        self.layerVisibleTest2 = imageio.imread(getDataPath('layerVisibleTest2.png'), ignoregamma=True)
+        self.layerVisibleTest3 = imageio.imread(getDataPath('layerVisibleTest3.png'), ignoregamma=True)
+        self.flattenNormalTest = imageio.imread(getDataPath('flattenNormalTest.png'), ignoregamma=True)
+        self.flattenNormalTest2 = imageio.imread(getDataPath('flattenNormalTest2.png'), ignoregamma=True)
 
-        self.flattenMultiplyTest = imageio.imread('./data/flattenMultiplyTest.png', ignoregamma=True)
-        self.flattenAdditiveTest = imageio.imread('./data/flattenAdditiveTest.png', ignoregamma=True)
-        self.flattenColorBurnTest = imageio.imread('./data/flattenColorBurnTest.png', ignoregamma=True)
-        self.flattenColorDodgeTest = imageio.imread('./data/flattenColorDodgeTest.png', ignoregamma=True)
-        self.flattenReflectTest = imageio.imread('./data/flattenReflectTest.png', ignoregamma=True)
-        self.flattenGlowTest = imageio.imread('./data/flattenGlowTest.png', ignoregamma=True)
-        self.flattenOverlayTest = imageio.imread('./data/flattenOverlayTest.png', ignoregamma=True)
-        self.flattenDifferenceTest = imageio.imread('./data/flattenDifferenceTest.png', ignoregamma=True)
-        self.flattenNegationTest = imageio.imread('./data/flattenNegationTest.png', ignoregamma=True)
-        self.flattenLightenTest = imageio.imread('./data/flattenLightenTest.png', ignoregamma=True)
-        self.flattenDarkenTest = imageio.imread('./data/flattenDarkenTest.png', ignoregamma=True)
-        self.flattenScreenTest = imageio.imread('./data/flattenScreenTest.png', ignoregamma=True)
-        self.flattenXORTest = imageio.imread('./data/flattenXORTest.png', ignoregamma=True)
+        self.flattenMultiplyTest = imageio.imread(getDataPath('flattenMultiplyTest.png'), ignoregamma=True)
+        self.flattenAdditiveTest = imageio.imread(getDataPath('flattenAdditiveTest.png'), ignoregamma=True)
+        self.flattenColorBurnTest = imageio.imread(getDataPath('flattenColorBurnTest.png'), ignoregamma=True)
+        self.flattenColorDodgeTest = imageio.imread(getDataPath('flattenColorDodgeTest.png'), ignoregamma=True)
+        self.flattenReflectTest = imageio.imread(getDataPath('flattenReflectTest.png'), ignoregamma=True)
+        self.flattenGlowTest = imageio.imread(getDataPath('flattenGlowTest.png'), ignoregamma=True)
+        self.flattenOverlayTest = imageio.imread(getDataPath('flattenOverlayTest.png'), ignoregamma=True)
+        self.flattenDifferenceTest = imageio.imread(getDataPath('flattenDifferenceTest.png'), ignoregamma=True)
+        self.flattenNegationTest = imageio.imread(getDataPath('flattenNegationTest.png'), ignoregamma=True)
+        self.flattenLightenTest = imageio.imread(getDataPath('flattenLightenTest.png'), ignoregamma=True)
+        self.flattenDarkenTest = imageio.imread(getDataPath('flattenDarkenTest.png'), ignoregamma=True)
+        self.flattenScreenTest = imageio.imread(getDataPath('flattenScreenTest.png'), ignoregamma=True)
+        self.flattenXORTest = imageio.imread(getDataPath('flattenXORTest.png'), ignoregamma=True)
 
-        self.flattenOpacityTest = imageio.imread('./data/flattenOpacityTest.png', ignoregamma=True)
+        self.flattenOpacityTest = imageio.imread(getDataPath('flattenOpacityTest.png'), ignoregamma=True)
 
     def test_read(self):
         layeredImage = read('./data/Untitled3.pdn')
