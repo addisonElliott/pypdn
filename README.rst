@@ -8,6 +8,12 @@ When using Paint.NET, the default file format that the images are saved in are P
 
 You can get Paint.NET `here <https://www.getpaint.net/>`_.
 
+Paint.NET is developed using C# (hence the .NET). Besides a basic XML header at the beginning, it primarily uses the
+BinaryFormatter class in C# to save the relevant classes when saving an image. This uses the `NRBF protocol
+<https://msdn.microsoft.com/en-us/library/cc236844.aspx>`_. A custom reader was developed to read the NRBF file and
+then this library essentially just parses the data from NRBF into more readable and user-friendly format. You can
+access the NRBF reader from the pypdn module as well in case you have any use for it.
+
 Installing
 =================
 Prerequisites
