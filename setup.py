@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 import os
 
 currentPath = os.path.abspath(os.path.dirname(__file__))
@@ -9,7 +9,7 @@ with open(os.path.join(currentPath, 'README.rst'), 'r') as f:
 
 long_description = '\n' + long_description
 setup(name='pypdn',
-      version='1.0.0',
+      version='1.0.1',
       description='Python package to read and write Paint.NET (PDN) images.',
       long_description=long_description,
       author='Addison Elliott',
@@ -35,7 +35,10 @@ setup(name='pypdn',
           'Tracker': 'https://github.com/addisonElliott/pypdn/issues',
       },
       python_requires='>=3',
-      py_modules=['polarTransform'],
+      packages=find_packages(),
+      package_data={
+        'tests': ['data/*']
+      },
       license='MIT License',
       install_requires=[
           'numpy', 'scikit-image', 'aenum']
