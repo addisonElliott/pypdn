@@ -49,7 +49,7 @@ or, for the last line, instead use::
   pip install -e .
 
 to install in 'develop' or 'editable' mode, where changes can be made to the local working code and Python will use
-the updated polarTransform code.
+the updated code.
 
 Test and coverage
 =================
