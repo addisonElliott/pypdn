@@ -1,6 +1,8 @@
 from setuptools import setup, find_packages
 import os
 
+from pypdn._version import __version__
+
 currentPath = os.path.abspath(os.path.dirname(__file__))
 
 # Get the long description from the README file
@@ -9,9 +11,10 @@ with open(os.path.join(currentPath, 'README.rst'), 'r') as f:
 
 long_description = '\n' + long_description
 setup(name='pypdn',
-      version='1.0.1',
+      version=__version__,
       description='Python package to read and write Paint.NET (PDN) images.',
       long_description=long_description,
+      long_description_content_type='text/x-rst',
       author='Addison Elliott',
       author_email='addison.elliott@gmail.com',
       url='https://github.com/addisonElliott/pypdn',
