@@ -32,6 +32,8 @@ class TestReader(unittest.TestCase):
 
         self.flattenOpacityTest = imageio.imread(getDataPath('flattenOpacityTest.png'), ignoregamma=True)
 
+        self.oldPDN3510Test = imageio.imread(getDataPath('oldPDN3510.png'), ignoregamma=True)
+
     def test_read(self):
         layeredImage = read(getDataPath('Untitled3.pdn'))
 
@@ -120,7 +122,7 @@ class TestReader(unittest.TestCase):
         self.assertEqual(layer.blendMode, BlendType.Normal)
 
         image = layeredImage.flatten(asByte=False)
-        np.testing.assert_equal(image, self.flattenNormalTest2 / 255.)
+        np.testing.assert_allclose(image, self.flattenNormalTest2 / 255., atol=2)
 
     def test_flatten_multiply(self):
         layeredImage = read(getDataPath('FlattenBlendTest.pdn'))
@@ -429,6 +431,22 @@ class TestReader(unittest.TestCase):
 
         # May be rounding errors so do within 2 points
         np.testing.assert_allclose(image, self.flattenOpacityTest, atol=2)
+
+    def test_old_pdn_format(self):
+        layeredImage = read(getDataPath('oldPDN3510.pdn'))
+
+        self.assertEqual(len(layeredImage.layers), 2)
+
+        layer = layeredImage.layers[0]
+        layer.visible = True
+
+        layer = layeredImage.layers[1]
+        layer.visible = True
+
+        image = layeredImage.flatten(asByte=True)
+
+        # May be rounding errors so do within 2 points
+        np.testing.assert_allclose(image[:, :, 0:3], self.oldPDN3510Test[:, :, 0:3], atol=2)
 
 
 if __name__ == '__main__':

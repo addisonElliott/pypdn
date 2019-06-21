@@ -34,6 +34,26 @@ class BlendType(IntEnum):
     Screen = 12
     XOR = 13
 
+    def fromClassName(className):
+        lookupTable = {
+            'PaintDotNet_UserBlendOps_NormalBlendOp': BlendType.Normal,
+            'PaintDotNet_UserBlendOps_MultiplyBlendOp': BlendType.Multiply,
+            'PaintDotNet_UserBlendOps_AdditiveBlendOp': BlendType.Additive,
+            'PaintDotNet_UserBlendOps_ColorBurnBlendOp': BlendType.ColorBurn,
+            'PaintDotNet_UserBlendOps_ColorDodgeBlendOp': BlendType.ColorDodge,
+            'PaintDotNet_UserBlendOps_ReflectBlendOp': BlendType.Reflect,
+            'PaintDotNet_UserBlendOps_GlowBlendOp': BlendType.Glow,
+            'PaintDotNet_UserBlendOps_OverlayBlendOp': BlendType.Overlay,
+            'PaintDotNet_UserBlendOps_DifferenceBlendOp': BlendType.Difference,
+            'PaintDotNet_UserBlendOps_NegationBlendOp': BlendType.Negation,
+            'PaintDotNet_UserBlendOps_LightenBlendOp': BlendType.Lighten,
+            'PaintDotNet_UserBlendOps_DarkenBlendOp': BlendType.Darken,
+            'PaintDotNet_UserBlendOps_ScreenBlendOp': BlendType.Screen,
+            'PaintDotNet_UserBlendOps_XorBlendOp': BlendType.XOR
+        }
+
+        return lookupTable.get(className, BlendType.Normal)
+
 
 class LayeredImage:
     __slots__ = ['width', 'height', 'version', 'layers']
@@ -198,7 +218,7 @@ def read(filename):
 
                 # With the data read in as one large 1D array, we now format the data properly
                 # Calculate the bits per pixel
-                bpp = stride * 8 / layeredImage.width
+                bpp = stride * 8 // layeredImage.width
 
                 # Convert 1D array to image array
                 if bpp == 32:
@@ -210,9 +230,19 @@ def read(filename):
                 else:
                     raise PDNReaderError('Invalid bpp %i' % bpp)
 
+                # type(bitmapLayer.properties.blendOp).__name__
+                # PaintDotNet_UserBlendOps_NormalBlendOp
+
+                if hasattr(layerProps, 'blendMode'):
+                    blendType = BlendType(layerProps.blendMode.value__)
+                elif hasattr(bitmapLayer, 'properties') and hasattr(bitmapLayer.properties, 'blendOp'):
+                    blendType = BlendType.fromClassName(type(bitmapLayer.properties.blendOp).__name__)
+                else:
+                    blendType = BlendType.Normal
+
                 # Setup layer with information and append to the layers list
                 layer = Layer(layerProps.name, layerProps.visible, layerProps.isBackground, layerProps.opacity,
-                              BlendType(layerProps.blendMode.value__), image)
+                              blendType, image)
                 layeredImage.layers.append(layer)
 
             return layeredImage

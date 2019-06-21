@@ -536,19 +536,11 @@ class NRBF:
         return array
 
     @_registerReader(_RecordTypeReaders, RecordType.ArraySingleObject)
+    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleString)
     def _read_ArraySingleObject(self):
         objectID, length = self._readArrayInfo()
 
         array = self._readObjectArray(length, objectID)
-
-        return array
-
-    @_registerReader(_RecordTypeReaders, RecordType.ArraySingleString)
-    def _readArraySingleString(self):
-        objectID, length = self._readArrayInfo()
-        primitiveType = PrimitiveType.String
-
-        array = self._PrimitiveTypeArrayReaders[primitiveType](self, length)
         self.objectsByID[objectID] = array
 
         return array
@@ -673,9 +665,6 @@ class NRBF:
             elif isinstance(value, Reference):
                 value.parent = array
                 value.indexInParent = index
-
-            # Save the object by ID
-            self.objectsByID[objectID] = array
 
             array[index] = value
             index += 1
