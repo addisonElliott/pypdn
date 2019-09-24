@@ -450,7 +450,7 @@ class NRBF:
 
     @_registerReader(_RecordTypeReaders, RecordType.MemberPrimitiveTyped)
     def _readMemberPrimitiveTyped(self):
-        primitiveType = self._readInt32()
+        primitiveType = self._readByte()
         value = self._PrimitiveTypeReaders[primitiveType](self)
 
         return value
