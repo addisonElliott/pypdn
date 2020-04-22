@@ -159,21 +159,42 @@ def _make_fn(name, chain_fn, args, defaults):
     args_with_self = ['_self'] + list(args)
     arguments = [_ast.Name(id=arg, ctx=_ast.Load()) for arg in args_with_self]
     defs = [_ast.Name(id='_def{0}'.format(idx), ctx=_ast.Load()) for idx, _ in enumerate(defaults)]
+    # Python 2 version
     if _PY2:
         parameters = _ast.arguments(args=[_ast.Name(id=arg, ctx=_ast.Param()) for arg in args_with_self],
                                     defaults=defs)
-    else:
+    # Python 3.0 to 3.7 version                                defaults=defs)
+    elif _PY3 and _sys.version_info[1] < 8:
         parameters = _ast.arguments(args=[_ast.arg(arg=arg) for arg in args_with_self],
                                     kwonlyargs=[],
                                     defaults=defs,
                                     kw_defaults=[])
-    module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
-                                                     args=parameters,
-                                                     body=[_ast.Return(
-                                                         value=_ast.Call(func=_ast.Name(id='_chain', ctx=_ast.Load()),
-                                                                         args=arguments,
-                                                                         keywords=[]))],
-                                                     decorator_list=[])])
+    # Python 3.8+
+    else:
+        parameters = _ast.arguments(args=[_ast.arg(arg=arg) for arg in args_with_self],
+                                    kwonlyargs=[],
+                                    defaults=defs,
+                                    kw_defaults=[],
+                                    posonlyargs=[])
+    # All python 2 versions and python
+    if _PY2 or _PY3 and _sys.version_info[1] < 8:
+        module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
+                                                         args=parameters,
+                                                         body=[_ast.Return(
+                                                               value=_ast.Call(func=_ast.Name(id='_chain', ctx=_ast.Load()),
+                                                                               args=arguments,
+                                                                               keywords=[]))],
+                                                         decorator_list=[])])
+    # Python 3.8+
+    else:
+        module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
+                                                         args=parameters,
+                                                         body=[_ast.Return(
+                                                               value=_ast.Call(func=_ast.Name(id='_chain', ctx=_ast.Load()),
+                                                                               args=arguments,
+                                                                               keywords=[]))],
+                                                         decorator_list=[])],
+                                 type_ignores=[])
     module_node = _ast.fix_missing_locations(module_node)
 
     # compile the ast
