@@ -198,6 +198,43 @@ class TestNamedlist(unittest.TestCase):
                                                     "d=None), y=Y(_id=2), z=Z(_id=3)), c={'this i': 12}))), ('b', "
                                                     "100), ('c', 200)])")
 
+    def test_repr_basic_py3_8(self):
+        """ test_repr_basic on python 3.8+
+
+        Set up the named lists. These will work with the patch,
+        without the patch these will throw a type error
+
+        see https://github.com/addisonElliott/pypdn/issues/3 for details
+        of the error trace
+
+        Then check that the repr of the object is as in previous versions
+        of python
+        """
+
+        # Set up the named lists here
+        testX = namedlist('X', ['_id', 'a', 'b', 'c', 'y', 'd'])
+        testY = namedlist('Y', ['_id', 'x', 'parent', 'y', 'z'])
+        testZ = namedlist('Z', ['_id', 'a', 'b', 'c', 'x', 'w'])
+        testW = namedlist('W', ['_id', 'a', 'b', 'x', 'y', 'c'])
+        testV = namedlist('V', ['_id', 'a', 'x', 'y', 'z', 'b', 'c'])
+
+        # Mirror a subset of test_repr_basic to test that x is identical to
+        # before python 3.8
+        x = testX(1, 10, 'test', 32.0, None, None)
+        y = testY(2, x, x, None, None)
+        z = testZ(3, 1, 2, '3', x, None)
+        w = testW(4, 1, 2, x, y, {'this i': 12})
+        v = testV(5, 1, x, y, z, 100, 200)
+
+        x.y = y
+        y.y = y
+        y.z = z
+        z.w = w
+        self.assertEqual(x._ref_count, 0)
+
+        self.assertEqual(repr(x), "X(_id=1, a=10, b='test', c=32.0, y=Y(_id=2, x=X(_id=1), parent=X(_id=1), "
+                                  "y=Y(_id=2), z=Z(_id=3, a=1, b=2, c='3', x=X(_id=1), w=W(_id=4, a=1, b=2, x=X(_id=1),"
+                                  " y=Y(_id=2), c={'this i': 12}))), d=None)")
 
 if __name__ == '__main__':
     unittest.main()
