@@ -159,6 +159,7 @@ def _make_fn(name, chain_fn, args, defaults):
     args_with_self = ['_self'] + list(args)
     arguments = [_ast.Name(id=arg, ctx=_ast.Load()) for arg in args_with_self]
     defs = [_ast.Name(id='_def{0}'.format(idx), ctx=_ast.Load()) for idx, _ in enumerate(defaults)]
+
     # Python 2 version
     if _PY2:
         parameters = _ast.arguments(args=[_ast.Name(id=arg, ctx=_ast.Param()) for arg in args_with_self],

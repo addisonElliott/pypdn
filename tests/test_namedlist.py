@@ -211,18 +211,12 @@ class TestNamedlist(unittest.TestCase):
         of python
         """
 
-        # Set up the named lists here, they will crash on python 3.8+
-        success = True
-        try:
-            testX = namedlist('X', ['_id', 'a', 'b', 'c', 'y', 'd'])
-            testY = namedlist('Y', ['_id', 'x', 'parent', 'y', 'z'])
-            testZ = namedlist('Z', ['_id', 'a', 'b', 'c', 'x', 'w'])
-            testW = namedlist('W', ['_id', 'a', 'b', 'x', 'y', 'c'])
-            testV = namedlist('V', ['_id', 'a', 'x', 'y', 'z', 'b', 'c'])
-        except TypeError:
-            success = False
-        self.assertTrue(success)
-
+        # Set up the named lists here
+        testX = namedlist('X', ['_id', 'a', 'b', 'c', 'y', 'd'])
+        testY = namedlist('Y', ['_id', 'x', 'parent', 'y', 'z'])
+        testZ = namedlist('Z', ['_id', 'a', 'b', 'c', 'x', 'w'])
+        testW = namedlist('W', ['_id', 'a', 'b', 'x', 'y', 'c'])
+        testV = namedlist('V', ['_id', 'a', 'x', 'y', 'z', 'b', 'c'])
 
         # Mirror a subset of test_repr_basic to test that x is identical to
         # before python 3.8
