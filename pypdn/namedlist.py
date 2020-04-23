@@ -28,6 +28,8 @@
 # Added circular dependency checks for NRBF class where it is common to have a C# .NET object contain circular
 # dependencies
 
+#pylint: disable=mixed-indentation
+
 __all__ = ['namedlist', 'namedtuple', 'NO_DEFAULT', 'FACTORY']
 
 # All of this hassle with ast is solely to provide a decent __init__
@@ -47,20 +49,14 @@ from keyword import iskeyword as _iskeyword
 
 import collections as _collections
 
-_PY2 = _sys.version_info[0] == 2
-_PY3 = _sys.version_info[0] == 3
-
 try:
     _OrderedDict = _collections.OrderedDict
 except AttributeError:
     _OrderedDict = None
 
-if _PY2:
-    _basestring = basestring
-    _iteritems = lambda d, **kw: iter(d.iteritems(**kw))
-else:
-    _basestring = str
-    _iteritems = lambda d, **kw: iter(d.items(**kw))
+
+_basestring = str
+_iteritems = lambda d, **kw: iter(d.items(**kw))
 
 NO_DEFAULT = object()
 
@@ -127,18 +123,9 @@ class _NameChecker(object):
         if len(name) == 0:
             raise ValueError('{0} names cannot be zero '
                              'length: {1!r}'.format(type_of_name, name))
-        if _PY2:
-            if not all(c.isalnum() or c == '_' for c in name):
-                raise ValueError('{0} names can only contain '
-                                 'alphanumeric characters and underscores: '
-                                 '{1!r}'.format(type_of_name, name))
-            if name[0].isdigit():
-                raise ValueError('{0} names cannot start with a '
-                                 'number: {1!r}'.format(type_of_name, name))
-        else:
-            if not name.isidentifier():
-                raise ValueError('{0} names names must be valid '
-                                 'identifiers: {1!r}'.format(type_of_name, name))
+        if not name.isidentifier():
+            raise ValueError('{0} names names must be valid '
+                                'identifiers: {1!r}'.format(type_of_name, name))
         if _iskeyword(name):
             raise ValueError('{0} names cannot be a keyword: '
                              '{1!r}'.format(type_of_name, name))
@@ -159,26 +146,12 @@ def _make_fn(name, chain_fn, args, defaults):
     args_with_self = ['_self'] + list(args)
     arguments = [_ast.Name(id=arg, ctx=_ast.Load()) for arg in args_with_self]
     defs = [_ast.Name(id='_def{0}'.format(idx), ctx=_ast.Load()) for idx, _ in enumerate(defaults)]
-
-    # Python 2 version
-    if _PY2:
-        parameters = _ast.arguments(args=[_ast.Name(id=arg, ctx=_ast.Param()) for arg in args_with_self],
-                                    defaults=defs)
-    # Python 3.0 to 3.7 version                                defaults=defs)
-    elif _PY3 and _sys.version_info[1] < 8:
+    # Python 3.0 to 3.7 version
+    if _sys.version_info[1] < 8:
         parameters = _ast.arguments(args=[_ast.arg(arg=arg) for arg in args_with_self],
                                     kwonlyargs=[],
                                     defaults=defs,
                                     kw_defaults=[])
-    # Python 3.8+
-    else:
-        parameters = _ast.arguments(args=[_ast.arg(arg=arg) for arg in args_with_self],
-                                    kwonlyargs=[],
-                                    defaults=defs,
-                                    kw_defaults=[],
-                                    posonlyargs=[])
-    # All python 2 versions and python
-    if _PY2 or _PY3 and _sys.version_info[1] < 8:
         module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
                                                          args=parameters,
                                                          body=[_ast.Return(
@@ -188,6 +161,11 @@ def _make_fn(name, chain_fn, args, defaults):
                                                          decorator_list=[])])
     # Python 3.8+
     else:
+        parameters = _ast.arguments(args=[_ast.arg(arg=arg) for arg in args_with_self],
+                                    kwonlyargs=[],
+                                    defaults=defs,
+                                    kw_defaults=[],
+                                    posonlyargs=[])
         module_node = _ast.Module(body=[_ast.FunctionDef(name=name,
                                                          args=parameters,
                                                          body=[_ast.Return(
@@ -196,6 +174,7 @@ def _make_fn(name, chain_fn, args, defaults):
                                                                                keywords=[]))],
                                                          decorator_list=[])],
                                  type_ignores=[])
+
     module_node = _ast.fix_missing_locations(module_node)
 
     # compile the ast
@@ -279,8 +258,7 @@ def _fields_and_defaults(typename, field_names, default, rename):
 
         # Okay: now we have the field_name and the default value (if any).
         # Validate the name, and add the field.
-        # Convert field_name to str for python 2.x
-        fields.add(name_checker.check_field_name(str(field_name), rename, idx), default)
+        fields.add(name_checker.check_field_name(field_name, rename, idx), default)
 
     return (tuple(fields.without_defaults + [name for name, default in
                                              fields.with_defaults]),
@@ -456,7 +434,6 @@ def _nl_replace(_self, **kwds):
 # The actual namedlist factory function.
 def namedlist(typename, field_names, default=NO_DEFAULT, rename=False,
               use_slots=True):
-    typename = str(typename)  # for python 2.x
     fields, defaults = _fields_and_defaults(typename, field_names, default, rename)
     type_dict = {'__init__': _make_fn('__init__', _nl_init, fields, defaults),
                  '__eq__': _nl_eq,
@@ -530,7 +507,6 @@ def _get_values(fields, args):
 ########################################################################
 # The actual namedtuple factory function.
 def namedtuple(typename, field_names, default=NO_DEFAULT, rename=False):
-    typename = str(typename)  # for python 2.x
     fields, defaults = _fields_and_defaults(typename, field_names, default, rename)
 
     type_dict = {'__new__': _make_fn('__new__', _nt_new, fields, defaults),

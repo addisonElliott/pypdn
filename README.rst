@@ -2,6 +2,8 @@ Introduction
 =================
 pypdn is a Python package for reading and writing Paint.NET (PDN) images.
 
+Note that python 3+ is required to use this package
+
 "Paint.NET is image and photo editing software for PCs that run Windows. It features an intuitive and innovative user interface with support for layers, unlimited undo, special effects, and a wide variety of useful and powerful tools. An active and growing online community provides friendly help, tutorials, and plugins."
 
 When using Paint.NET, the default file format that the images are saved in are PDN's, which is a proprietary format Paint.NET uses. The benefit of this format over BMP, PNG, JPEG, etc is that it stores layer information and properties that are not present in traditional image formats.
