@@ -24,10 +24,11 @@ setup(name='pypdn',
           'License :: OSI Approved :: MIT License',
           "Programming Language :: Python",
           'Programming Language :: Python :: 3',
-          "Programming Language :: Python :: 2.7",
           "Programming Language :: Python :: 3.4",
           "Programming Language :: Python :: 3.5",
           "Programming Language :: Python :: 3.6",
+          "Programming Language :: Python :: 3.7",
+          "Programming Language :: Python :: 3.8",
           "Operating System :: OS Independent"
 
       ],
@@ -37,12 +38,12 @@ setup(name='pypdn',
           'Source': 'https://github.com/addisonElliott/pypdn',
           'Tracker': 'https://github.com/addisonElliott/pypdn/issues',
       },
-      python_requires='>=3',
+      python_requires='>=3.4',
       packages=find_packages(),
       package_data={
         'tests': ['data/*']
       },
       license='MIT License',
       install_requires=[
-          'numpy', 'scikit-image', 'aenum']
+          'numpy>=1.12', 'scikit-image>=0.10', 'aenum>=1.0']
       )
