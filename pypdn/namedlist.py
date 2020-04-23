@@ -28,8 +28,6 @@
 # Added circular dependency checks for NRBF class where it is common to have a C# .NET object contain circular
 # dependencies
 
-#pylint: disable=mixed-indentation
-
 __all__ = ['namedlist', 'namedtuple', 'NO_DEFAULT', 'FACTORY']
 
 # All of this hassle with ast is solely to provide a decent __init__
@@ -53,7 +51,6 @@ try:
     _OrderedDict = _collections.OrderedDict
 except AttributeError:
     _OrderedDict = None
-
 
 _basestring = str
 _iteritems = lambda d, **kw: iter(d.items(**kw))
@@ -174,7 +171,6 @@ def _make_fn(name, chain_fn, args, defaults):
                                                                                keywords=[]))],
                                                          decorator_list=[])],
                                  type_ignores=[])
-
     module_node = _ast.fix_missing_locations(module_node)
 
     # compile the ast
