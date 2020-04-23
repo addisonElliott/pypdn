@@ -45,5 +45,5 @@ setup(name='pypdn',
       },
       license='MIT License',
       install_requires=[
-          'numpy', 'scikit-image', 'aenum']
+          'numpy>=1.12', 'scikit-image>=0.10', 'aenum>=1.0']
       )
