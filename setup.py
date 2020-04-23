@@ -39,7 +39,7 @@ setup(name='pypdn',
           'Source': 'https://github.com/addisonElliott/pypdn',
           'Tracker': 'https://github.com/addisonElliott/pypdn/issues',
       },
-      python_requires='>=3',
+      python_requires='>=3.4',
       packages=find_packages(),
       package_data={
         'tests': ['data/*']
