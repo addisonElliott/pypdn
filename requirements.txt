@@ -1,3 +1,2 @@
 numpy>=1.12
-scikit-image>=0.10
 aenum>=1.0

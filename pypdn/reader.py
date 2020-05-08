@@ -2,7 +2,6 @@ import gzip
 import struct
 
 import numpy as np
-import skimage
 from aenum import IntEnum
 import warnings
 
@@ -82,7 +81,7 @@ class LayeredImage:
                 blendMode = BlendType.Normal if not applyBlendMode else layer.blendMode
 
                 # Operations must be done on float image!
-                normalizedImage = skimage.img_as_float(layer.image)
+                normalizedImage = imageIntToFloat(layer.image)
 
                 # Apply the layer opacity to the image here
                 # If the image does not have an alpha component, extend the image to contain one
@@ -103,7 +102,7 @@ class LayeredImage:
             # Personally, I think the user should know that converting to a uint8 will cause precision lost from float
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore')
-                image = skimage.img_as_ubyte(image)
+                image = imageFloatToInt(image)
 
         return image
 
@@ -288,7 +287,7 @@ def blendingFunc(A, B, blendType):
         # Catch warnings to prevent the precision lost warning
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            return skimage.img_as_float(skimage.img_as_ubyte(A) ^ skimage.img_as_ubyte(B))
+            return imageIntToFloat(imageFloatToInt(A) ^ imageFloatToInt(B))
 
 
 def applyBlending(A, B, blendType):
@@ -325,3 +324,20 @@ def applyBlending(A, B, blendType):
 
     # Return RGBA image by combining RGB and A
     return np.dstack((colorComponents, alphaComponent))
+
+def imageIntToFloat(image):
+    """Convert a numpy array representing an image to an array of floats
+
+    Args:
+        image (np.array(int)): A numpy array of int values
+    """
+    return image/255
+
+
+def imageFloatToInt(image):
+    """Convert a numpy array representing an image to an array of ints
+
+    Args:
+        image (np.array(float)): A numpy array of float values
+    """
+    return (image*255).astype(np.uint8)
