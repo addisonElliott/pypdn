@@ -21,7 +21,6 @@ Prerequisites
 * Python 3.4+
 * Dependencies:
     * numpy
-    * scikit-image
     * aenum
 
 Installing pypdn
