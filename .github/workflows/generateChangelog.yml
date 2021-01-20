@@ -12,6 +12,8 @@ jobs:
         with:
           # Username of the owner of target GitHub repo.
           user: addisonElliott
+          unreleasedOnly: true
+          unreleased: true
           issues: true
           issuesWoLabels: true
           pullRequests: true
