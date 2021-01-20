@@ -1,0 +1,21 @@
+name: Generate Changelog
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: heinrichreimer/action-github-changelog-generator@v2.2 
+        with:
+          # Username of the owner of target GitHub repo.
+          user: addisonElliott
+          # To make more than 50 requests per hour your GitHub token is required.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Include closed issues in changelog.
+          issues: true
+          # Include pull-requests in changelog.
+          pullRequests: true
+          # Generate log from unreleased closed issues only.
+          unreleasedOnly: true
