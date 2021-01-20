@@ -14,6 +14,7 @@ jobs:
           user: addisonElliott
           unreleasedOnly: true
           unreleased: true
+          author: true
           issues: true
           issuesWoLabels: true
           pullRequests: true
