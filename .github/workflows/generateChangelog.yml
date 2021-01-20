@@ -12,6 +12,10 @@ jobs:
         with:
           # Username of the owner of target GitHub repo.
           user: addisonElliott
+          issues: true
+          issuesWoLabels: true
+          pullRequests: true
+          prWoLabels: true
           # To make more than 50 requests per hour your GitHub token is required.
           token: ${{ secrets.GITHUB_TOKEN }}
       - run: echo "${{ steps.generate-changelog.outputs.changelog }}"
