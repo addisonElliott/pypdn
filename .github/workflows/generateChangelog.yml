@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: heinrichreimer/action-github-changelog-generator@v2.2 
+        id: generate-changelog
         with:
           # Username of the owner of target GitHub repo.
           user: addisonElliott
@@ -19,3 +20,4 @@ jobs:
           pullRequests: true
           # Generate log from unreleased closed issues only.
           unreleasedOnly: true
+      - run: echo ${{ steps.maybe-greet.output.changelog }}
