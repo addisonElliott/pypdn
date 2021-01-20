@@ -20,4 +20,4 @@ jobs:
           pullRequests: true
           # Generate log from unreleased closed issues only.
           unreleasedOnly: true
-      - run: echo ${{ steps.generate-changelog.outputs.changelog }}
+      - run: echo "${{ steps.generate-changelog.outputs.changelog }}"
