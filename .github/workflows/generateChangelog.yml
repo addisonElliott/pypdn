@@ -1,7 +1,7 @@
-name: Generate changelog
+name: Generate Changelog
 
 on:
-  workflow_dispatch
+  workflow_dispatch:
 
 jobs:
   generate-changelog:
