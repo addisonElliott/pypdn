@@ -1,6 +1,6 @@
 Introduction
 =================
-pypdn is a Python package for reading and writing Paint.NET (PDN) images.
+pypdn is a Python package for reading Paint.NET (PDN) images.
 
 "Paint.NET is image and photo editing software for PCs that run Windows. It features an intuitive and innovative user interface with support for layers, unlimited undo, special effects, and a wide variety of useful and powerful tools. An active and growing online community provides friendly help, tutorials, and plugins."
 
